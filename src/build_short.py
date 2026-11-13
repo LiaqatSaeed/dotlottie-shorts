@@ -16,9 +16,27 @@ import zipfile
 from pathlib import Path
 
 from generate_audio import synthesize as synthesize_narration
-from audio_envelope import amplitude_envelope
+from audio_envelope import extract_features
 
-MOUTH_OPEN_THRESHOLD = 0.08
+# Rough viseme classification from two cheap per-frame signal features:
+# RMS (loudness) and zero-crossing rate (a standard proxy for how
+# high-frequency/noise-like a frame is). Thresholds were picked by
+# inspecting real narration clips, not guessed - see audio_envelope.py's
+# docstring for why ZCR is the second axis instead of just volume tiers.
+SILENCE_RMS = 0.02
+WIDE_ZCR = 0.30   # breathy/sibilant-ish: quieter but noisier (e.g. "h", "s")
+ROUND_ZCR = 0.10  # strong low-frequency vowel: loud and periodic (e.g. "o", "ah")
+MOUTH_STATES = ["mouth-closed", "mouth-round", "mouth-wide", "mouth-mid"]
+
+
+def classify_viseme(rms, zcr):
+    if rms <= SILENCE_RMS:
+        return "mouth-closed"
+    if zcr > WIDE_ZCR:
+        return "mouth-wide"
+    if zcr < ROUND_ZCR:
+        return "mouth-round"
+    return "mouth-mid"
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 
@@ -76,43 +94,40 @@ def find_group_transform(layers, group_name):
     return None
 
 
-def mouth_opacity_keyframes(envelope, open_when_loud):
-    """Turn a per-frame amplitude envelope into hold keyframes for one
-    mouth shape's opacity - 100 when the mouth should be visible, else 0.
+def mouth_opacity_keyframes(active_states, this_state):
+    """Turn a per-frame list of active-state names into hold keyframes for
+    one mouth shape's opacity - 100 whenever it's the active state, else 0.
     Only emits a keyframe when the state changes, to keep the JSON small."""
-    def state_at(frame_amp):
-        is_loud = frame_amp > MOUTH_OPEN_THRESHOLD
-        visible = is_loud if open_when_loud else not is_loud
-        return 100 if visible else 0
+    def value_at(i):
+        return 100 if active_states[i] == this_state else 0
 
     keyframes = []
     prev_value = None
-    for t, amp in enumerate(envelope):
-        value = state_at(amp)
+    for t in range(len(active_states)):
+        value = value_at(t)
         if value != prev_value:
             keyframes.append({"t": t, "s": [value], "h": 1})
             prev_value = value
     if not keyframes:
-        keyframes = [{"t": 0, "s": [state_at(0)], "h": 1}]
-    keyframes.append({"t": len(envelope), "s": [keyframes[-1]["s"][0]]})
+        keyframes = [{"t": 0, "s": [0], "h": 1}]
+    keyframes.append({"t": len(active_states), "s": [keyframes[-1]["s"][0]]})
     return keyframes
 
 
 def embed_lip_sync(scene_data, audio_bytes):
-    """Key the 'mouth-open'/'mouth-closed' shape groups' opacity to the
-    narration's amplitude envelope, so the mouth visibly moves while the
-    character speaks."""
+    """Key each mouth shape group's opacity so exactly one is visible per
+    frame, picked by classify_viseme() from the narration's audio features."""
     fps = scene_data["fr"]
     frame_count = scene_data["op"] - scene_data["ip"]
-    envelope = amplitude_envelope(audio_bytes, fps, frame_count)
+    features = extract_features(audio_bytes, fps, frame_count)
+    active_states = [classify_viseme(f["rms"], f["zcr"]) for f in features]
 
-    open_tr = find_group_transform(scene_data["layers"], "mouth-open")
-    closed_tr = find_group_transform(scene_data["layers"], "mouth-closed")
-    if open_tr is None or closed_tr is None:
-        return  # template has no mouth shapes - nothing to sync
+    transforms = {name: find_group_transform(scene_data["layers"], name) for name in MOUTH_STATES}
+    if any(tr is None for tr in transforms.values()):
+        return  # template doesn't have all mouth shapes - nothing to sync
 
-    open_tr["o"] = {"a": 1, "k": mouth_opacity_keyframes(envelope, open_when_loud=True)}
-    closed_tr["o"] = {"a": 1, "k": mouth_opacity_keyframes(envelope, open_when_loud=False)}
+    for name, tr in transforms.items():
+        tr["o"] = {"a": 1, "k": mouth_opacity_keyframes(active_states, name)}
 
 
 def embed_audio(scene_data, text, audio_id):

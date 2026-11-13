@@ -74,11 +74,13 @@ This isn't guesswork: the dotLottie/Lottie docs don't publish the exact internal
 
 ## Lip sync
 
-The character template now has two mouth shapes, `mouth-closed` (a thin resting line) and `mouth-open` (a wider dark shape), layered on top of the head so whichever is visible actually shows. `src/audio_envelope.py` decodes a scene's narration mp3 with ffmpeg and computes an RMS amplitude value per animation frame; `build_short.py` turns that into hold keyframes that flip the two mouth shapes' opacity in sync with it - loud frames open the mouth, quiet frames close it. No phoneme-level viseme matching, just an amplitude-driven toggle, which is the same basic technique tools like Adobe Character Animator's auto lip sync use for simple 2D characters.
+The character template has four mouth shapes - `mouth-closed` (thin resting line), `mouth-round` (tall/narrow, for strong vowels), `mouth-wide` (wide/flat, for sibilants/breathy consonants), and `mouth-mid` (fallback for everything else) - layered on top of the head so whichever is active actually shows.
 
-Verified by seeking the composed `.lottie` to specific frames in-browser and confirming the mouth shape actually changes exactly where the envelope says it should (closed at a silent frame, open at a loud one) - not just that the keyframes exist in the JSON.
+`src/audio_envelope.py` decodes a scene's narration mp3 with ffmpeg and computes two per-frame features: RMS (loudness) and zero-crossing rate (a standard, cheap speech-processing proxy for how noisy/high-frequency a frame is - voiced vowels are loud with low ZCR, sibilants/breathy sounds are quieter but noisier with high ZCR). `build_short.py`'s `classify_viseme()` picks one of the four mouth shapes per frame from those two numbers, and turns that into hold keyframes toggling each shape's opacity. It's not real phoneme alignment, but it's driven by actual signal features, not just a volume toggle - the thresholds were picked by inspecting the RMS/ZCR values on a real narration clip, not guessed.
 
-**Known limitations:** only two mouth states (open/closed), no in-between shapes for different vowel/consonant sounds; the amplitude threshold (`MOUTH_OPEN_THRESHOLD` in `build_short.py`) is a fixed constant, not calibrated per-voice.
+Verified by seeking the composed `.lottie` to specific frames the classifier assigned to each state and confirming the mouth shape actually matches - a wide flat shape where it picked "mouth-wide", a tall narrow one where it picked "mouth-round", etc.
+
+**Known limitations:** still a rough 4-bucket classification, not real viseme/phoneme detection; thresholds (`SILENCE_RMS`, `WIDE_ZCR`, `ROUND_ZCR` in `build_short.py`) are fixed constants calibrated on one voice, not adaptive per-speaker.
 
 ## Status
 
