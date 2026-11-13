@@ -104,6 +104,10 @@ That `description` field is what the AI plan generator actually uses to decide f
 python3 scripts/make_standalone_preview.py --lottie dist/the-explorer.lottie --out dist/the-explorer-standalone.html --title "The Explorer"
 ```
 
+## Character art upgrade
+
+All three templates now have legs, shoes, hair, and rounded hands - not just a head/body/arm "shape blob." Added by inspecting a free, properly-rigged human-character animation on the LottieFiles marketplace (`Character.lottie`, bezier-path art with separate Head/Body/Arm/Leg layers) for reference - its generic fill names and 1080x1080 canvas made directly reusing it more work than it was worth right now (see `external-refs/` locally, gitignored, not redistributed), but it clarified exactly what was missing from our own shapes, which were then added directly using the existing color-param system (no new params needed - hair/shoes use fixed colors, legs reuse `character-outfit-fill`).
+
 ## Status
 
 Prompt → AI-generated plan (choosing between 3 templates by narrative role, with narration) → multi-scene `.lottie` with embedded audio, amplitude-driven lip sync, and duration-aware scenes works end-to-end, verified in-browser (pose/motion/mouth-shape/colors, held final pose through an extended tail) and functionally (actual audio `.play()` calls, correct per-template selection across all 3, correctly stretched/un-stretched durations). Not yet built: background music separate from narration, and a second LLM provider (Anthropic) as an alternative to OpenAI.

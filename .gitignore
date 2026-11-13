@@ -6,3 +6,4 @@ dist/
 dist/
 build/
 .cache/
+external-refs/
