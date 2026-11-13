@@ -1,105 +1,10 @@
 {
-  "animationId": "brewly-explainer",
+  "animationId": "brewly-coffee-short",
   "scenes": [
     {
-      "label": "Welcome to Brewly",
+      "label": "Character discovers Brewly",
       "template": "templates/characters/wave-character.json",
-      "params": {
-        "backgroundColor": [
-          0.9,
-          0.9,
-          0.9,
-          1
-        ],
-        "skinColor": [
-          0.98,
-          0.82,
-          0.65,
-          1
-        ],
-        "outfitColor": [
-          0.3,
-          0.5,
-          0.3,
-          1
-        ]
-      }
-    },
-    {
-      "label": "Discover Roasters",
-      "template": "templates/characters/wave-character.json",
-      "params": {
-        "backgroundColor": [
-          0.85,
-          0.83,
-          0.75,
-          1
-        ],
-        "skinColor": [
-          0.98,
-          0.82,
-          0.65,
-          1
-        ],
-        "outfitColor": [
-          0.4,
-          0.33,
-          0.2,
-          1
-        ]
-      }
-    },
-    {
-      "label": "Get Beans Weekly",
-      "template": "templates/characters/wave-character.json",
-      "params": {
-        "backgroundColor": [
-          0.9,
-          0.95,
-          0.8,
-          1
-        ],
-        "skinColor": [
-          0.98,
-          0.82,
-          0.65,
-          1
-        ],
-        "outfitColor": [
-          0.77,
-          0.57,
-          0.35,
-          1
-        ]
-      }
-    },
-    {
-      "label": "Cancel Anytime",
-      "template": "templates/characters/wave-character.json",
-      "params": {
-        "backgroundColor": [
-          0.95,
-          0.85,
-          0.85,
-          1
-        ],
-        "skinColor": [
-          0.98,
-          0.82,
-          0.65,
-          1
-        ],
-        "outfitColor": [
-          0.6,
-          0.2,
-          0.2,
-          1
-        ]
-      }
-    },
-    {
-      "label": "Join Brewly Today!",
-      "template": "templates/characters/wave-character.json",
+      "narration": "Discover your new favorite coffee!",
       "params": {
         "backgroundColor": [
           0.95,
@@ -114,9 +19,84 @@
           1
         ],
         "outfitColor": [
-          0.1,
-          0.6,
           0.8,
+          0.52,
+          0.25,
+          1
+        ]
+      }
+    },
+    {
+      "label": "Character enjoys coffee selection",
+      "template": "templates/characters/wave-character.json",
+      "narration": "Explore unique roasters from around the world.",
+      "params": {
+        "backgroundColor": [
+          0.95,
+          0.94,
+          0.85,
+          1
+        ],
+        "skinColor": [
+          0.98,
+          0.82,
+          0.65,
+          1
+        ],
+        "outfitColor": [
+          0.4,
+          0.3,
+          0.1,
+          1
+        ]
+      }
+    },
+    {
+      "label": "Character receives coffee delivery",
+      "template": "templates/characters/wave-character.json",
+      "narration": "Get fresh beans delivered weekly!",
+      "params": {
+        "backgroundColor": [
+          0.95,
+          0.96,
+          0.88,
+          1
+        ],
+        "skinColor": [
+          0.98,
+          0.82,
+          0.65,
+          1
+        ],
+        "outfitColor": [
+          0.15,
+          0.35,
+          0.45,
+          1
+        ]
+      }
+    },
+    {
+      "label": "Character embraces subscription flexibility",
+      "template": "templates/characters/wave-character.json",
+      "narration": "Cancel anytime, no worries!",
+      "params": {
+        "backgroundColor": [
+          0.95,
+          0.96,
+          0.9,
+          1
+        ],
+        "skinColor": [
+          0.98,
+          0.82,
+          0.65,
+          1
+        ],
+        "outfitColor": [
+          0.6,
+          0.3,
+          0.1,
           1
         ]
       }

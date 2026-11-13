@@ -1,0 +1,53 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <title>audio-test debug</title>
+  <script>
+    window.__audioLog = [];
+    const OrigAudioContext = window.AudioContext || window.webkitAudioContext;
+    function wrap(cls, name) {
+      if (!cls) return;
+      const OrigDecode = cls.prototype.decodeAudioData;
+      if (OrigDecode) {
+        cls.prototype.decodeAudioData = function (...args) {
+          window.__audioLog.push(name + '.decodeAudioData called, byteLength=' + (args[0] && args[0].byteLength));
+          return OrigDecode.apply(this, args);
+        };
+      }
+    }
+    wrap(OrigAudioContext, 'AudioContext');
+    const OrigPlay = HTMLMediaElement.prototype.play;
+    HTMLMediaElement.prototype.play = function (...args) {
+      window.__audioLog.push('HTMLMediaElement.play called, src len=' + (this.src || '').length);
+      return OrigPlay.apply(this, args);
+    };
+  </script>
+  <script type="module">
+    import { DotLottie } from "https://cdn.jsdelivr.net/npm/@lottiefiles/dotlottie-web@0.83.2/+esm";
+    window.addEventListener('DOMContentLoaded', () => {
+      const canvas = document.getElementById('anim');
+      window.__dl = new DotLottie({
+        canvas,
+        src: '../dist/brewly-coffee-short.lottie',
+        loop: false,
+        autoplay: true,
+      });
+    });
+  </script>
+  <style>
+    body { background: #222; color: #fff; font-family: sans-serif; }
+    #anim { width: 300px; height: 300px; background: #fff; }
+  </style>
+</head>
+<body>
+  <canvas id="anim" width="300" height="300"></canvas>
+  <pre id="log"></pre>
+  <button id="dump">Dump audio log</button>
+  <script>
+    document.getElementById('dump').onclick = () => {
+      document.getElementById('log').textContent = JSON.stringify(window.__audioLog, null, 2);
+    };
+  </script>
+</body>
+</html>

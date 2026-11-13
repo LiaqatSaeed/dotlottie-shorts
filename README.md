@@ -62,11 +62,19 @@ python3 src/generate_plan.py --prompt "a short for a coffee subscription app" --
 python3 src/build_short.py --plan plans/generated.json --out dist/generated.lottie
 ```
 
-`plans/generated-brewly.json` is a real, unedited output from this tool (prompt: a coffee-subscription app called Brewly) - it independently chose 5 scenes ("Welcome to Brewly" → "Discover Roasters" → "Get Beans Weekly" → "Cancel Anytime" → "Join Brewly Today!") and picked thematically fitting colors per beat (roast-brown tones for the roasters/beans scenes, a cool blue for the CTA) - none of that was written by hand. Composing and playing it back confirmed the scene-to-scene colors land exactly where the model placed them in the timeline.
+`plans/generated-brewly-audio.json` is a real, unedited output from this tool (prompt: a coffee-subscription app called Brewly) - it independently chose 4 scenes, thematically fitting colors per beat, and a full voiceover script line per scene ("Discover your new favorite coffee!" → "Explore unique roasters from around the world." → "Get fresh beans delivered weekly!" → "Cancel anytime, no worries!") - none of that was written by hand. Composing and playing it back confirmed the scene-to-scene colors and narration land exactly where the model placed them in the timeline.
+
+## Audio
+
+`src/generate_audio.py` synthesizes narration via OpenAI TTS (cached locally by text hash under `.cache/audio/`, gitignored, so re-running a plan doesn't re-pay for synthesis). `build_short.py` embeds it per scene as a real Lottie **Audio layer** (`ty: 6`) referencing a base64-embedded asset (the same embedding convention Lottie uses for inline images) - add a `"narration": "<line>"` field to any scene in a plan and it gets synthesized and wired in automatically.
+
+This isn't guesswork: the dotLottie/Lottie docs don't publish the exact internal audio schema, so it was verified empirically - instrumenting `HTMLMediaElement.prototype.play` in the browser showed the player actually creates an `<audio>` element and calls `.play()` on a blob built from our embedded asset, once on a current player version (`@lottiefiles/dotlottie-web@0.83.2` - the pinned `0.47.0` used earlier silently did nothing with the audio layer, so the version matters).
+
+**Known limitation:** each scene's audio layer spans the scene's full visual duration regardless of how long the synthesized line actually is - if narration runs longer than the scene, it'll be cut off. Not yet handled: sizing scene duration to narration length, or background music separate from narration.
 
 ## Status
 
-Prompt → AI-generated plan → multi-scene `.lottie` works end-to-end, verified in-browser. Not yet built: a second template (so scenes vary by more than color), audio, and a second LLM provider (Anthropic) as an alternative to OpenAI.
+Prompt → AI-generated plan (with narration) → multi-scene `.lottie` with embedded, per-scene audio works end-to-end, verified in-browser both visually and for actual audio playback. Not yet built: a second template (so scenes vary by more than color), scene durations that adapt to narration length, and a second LLM provider (Anthropic) as an alternative to OpenAI.
 
 ## License
 

@@ -8,11 +8,14 @@ Usage:
   python3 src/build_short.py --plan plans/demo-explainer.json --out dist/demo-explainer.lottie
 """
 import argparse
+import base64
 import copy
 import json
 import os
 import zipfile
 from pathlib import Path
+
+from generate_audio import synthesize as synthesize_narration
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 
@@ -57,6 +60,44 @@ def load_template(template_path, params):
     return data
 
 
+def embed_audio(scene_data, text, audio_id):
+    """Synthesize narration for `text` and add it as an Audio layer (ty=6)
+    spanning the scene's full duration, referencing a base64-embedded asset -
+    the same embedding convention Lottie uses for inline images."""
+    audio_bytes = synthesize_narration(text)
+    b64 = base64.b64encode(audio_bytes).decode()
+
+    scene_data.setdefault("assets", []).append({
+        "id": audio_id,
+        "e": 1,
+        "u": "",
+        "p": f"data:audio/mpeg;base64,{b64}",
+    })
+
+    duration = scene_data["op"] - scene_data["ip"]
+    next_ind = max((layer.get("ind", 0) for layer in scene_data["layers"]), default=0) + 1
+    scene_data["layers"].append({
+        "ddd": 0,
+        "ind": next_ind,
+        "ty": 6,
+        "nm": "narration",
+        "refId": audio_id,
+        "sr": 1,
+        "ks": {
+            "o": {"a": 0, "k": 100},
+            "r": {"a": 0, "k": 0},
+            "p": {"a": 0, "k": [0, 0, 0]},
+            "a": {"a": 0, "k": [0, 0, 0]},
+            "s": {"a": 0, "k": [100, 100, 100]},
+        },
+        "ao": 0,
+        "ip": 0,
+        "op": duration,
+        "st": 0,
+        "bm": 0,
+    })
+
+
 def compose(plan):
     """Wrap each scene's layers as a precomp asset, then place sequential
     precomp layers in the main composition so scenes play one after another."""
@@ -69,11 +110,17 @@ def compose(plan):
     for i, scene in enumerate(plan["scenes"]):
         template_path = REPO_ROOT / scene["template"]
         scene_data = load_template(template_path, scene.get("params", {}))
+        scene_id = f"scene-{i}"
+        if scene.get("narration"):
+            embed_audio(scene_data, scene["narration"], audio_id=f"{scene_id}-narration")
         if canvas_w is None:
             canvas_w, canvas_h, fr = scene_data["w"], scene_data["h"], scene_data["fr"]
         duration = scene_data["op"] - scene_data["ip"]
-        scene_id = f"scene-{i}"
 
+        # scene_data may have picked up extra top-level assets (e.g. the
+        # embedded audio asset from embed_audio) - those belong in the
+        # document's single global asset list, not nested under the precomp.
+        assets.extend(scene_data.get("assets", []))
         assets.append({
             "id": scene_id,
             "nm": scene.get("label", scene_id),

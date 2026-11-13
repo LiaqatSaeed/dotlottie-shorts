@@ -1,0 +1,23 @@
+{
+  "animationId": "audio-test",
+  "scenes": [
+    {
+      "label": "scene-1",
+      "template": "templates/characters/wave-character.json",
+      "narration": "Say hello to Brewly.",
+      "params": {
+        "backgroundColor": [0.98, 0.9, 0.9, 1],
+        "outfitColor": [0.75, 0.25, 0.25, 1]
+      }
+    },
+    {
+      "label": "scene-2",
+      "template": "templates/characters/wave-character.json",
+      "narration": "Fresh beans, every week.",
+      "params": {
+        "backgroundColor": [0.9, 0.93, 0.99, 1],
+        "outfitColor": [0.2, 0.4, 0.8, 1]
+      }
+    }
+  ]
+}

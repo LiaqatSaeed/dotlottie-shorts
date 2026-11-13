@@ -54,12 +54,15 @@ def build_system_prompt(available_templates):
         "Respond with a JSON object of this exact shape:\n"
         '{"animationId": "<kebab-case id>", "scenes": [\n'
         '  {"label": "<short label>", "template": "<templatePath from above>", '
+        '"narration": "<one short spoken line for this scene, 4-10 words>", '
         '"params": {"<paramKey>": <value matching that param\'s type>}}\n'
         "]}\n"
         "Plan 3 to 6 scenes that tell a coherent short story arc "
         "(e.g. problem -> product -> benefit -> call to action) using color "
-        "choices that fit the mood of each beat. Color params are [r, g, b, a] "
-        "floats in 0-1."
+        "choices that fit the mood of each beat, and narration lines that "
+        "read naturally as a voiceover script across the whole short. Color "
+        "params are [r, g, b, a] floats in 0-1. Every scene must include a "
+        "'narration' line - it is required, not optional."
     )
 
 
@@ -117,6 +120,8 @@ def validate_plan(plan, available_templates):
         raise ValueError("Plan must have a non-empty 'scenes' list")
 
     for i, scene in enumerate(plan["scenes"]):
+        if not isinstance(scene.get("narration"), str) or not scene["narration"].strip():
+            raise ValueError(f"Scene {i}: missing or empty 'narration'")
         template_path = scene.get("template")
         if template_path not in by_path:
             raise ValueError(f"Scene {i}: unknown template '{template_path}'")
