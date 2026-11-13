@@ -1,0 +1,31 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <title>demo-explainer preview</title>
+  <script type="module">
+    import { DotLottie } from "https://cdn.jsdelivr.net/npm/@lottiefiles/dotlottie-web@0.47.0/+esm";
+    window.addEventListener('DOMContentLoaded', () => {
+      const canvas = document.getElementById('anim');
+      const dl = new DotLottie({
+        canvas,
+        src: '../dist/demo-explainer.lottie',
+        loop: false,
+        autoplay: true,
+      });
+      window.__dl = dl;
+      dl.addEventListener('frame', (e) => {
+        document.getElementById('frame').textContent = 'frame: ' + Math.round(e.currentFrame);
+      });
+    });
+  </script>
+  <style>
+    body { background: #222; display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100vh; margin: 0; font-family: sans-serif; color: #fff; }
+    #anim { width: 400px; height: 400px; background: #fff; }
+  </style>
+</head>
+<body>
+  <canvas id="anim" width="400" height="400"></canvas>
+  <div id="frame">frame: -</div>
+</body>
+</html>

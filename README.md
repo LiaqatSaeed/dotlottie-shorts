@@ -38,9 +38,23 @@ Preview it locally:
 
 Both were verified to render and animate correctly in a browser.
 
+## Sequencing pipeline
+
+`src/build_short.py` is what actually turns templates into a *short* rather than a single looping clip: it takes a **plan** (a JSON list of scenes — which template, what param overrides, in what order), applies each scene's params by shape name, wraps each scene as a precomp asset, and places sequential precomp layers on one top-level timeline — so scene 2 only starts once scene 1's frames end, same mechanism Lottie/After Effects uses natively for cuts between shots.
+
+```bash
+python3 src/build_short.py --plan plans/demo-explainer.json --out dist/demo-explainer.lottie
+```
+
+`plans/demo-explainer.json` is a hand-written 3-scene example (problem → product → CTA, same `wave-character` template with different colors per scene) — verified in-browser to actually play three distinct scenes back to back on one timeline, not one clip looping.
+
+**What's a stub right now:** the plan file is hand-written, not AI-generated. The real next step is a "plan generator" — given a prompt/product description plus the available templates' `.config.json` schemas, an LLM produces a plan JSON like `demo-explainer.json` automatically. That's a prompting/JSON-validation problem, not a new rendering mechanism — the composer already handles whatever plan it's given.
+
+**What's still a toy:** with only one character template, "scenes" currently only vary by color. Real visual variety needs more templates (different characters, backgrounds, text overlays) — the composer and plan format don't change when those are added, since both are template-agnostic (every template is just a Lottie JSON + a `.config.json` describing its params).
+
 ## Status
 
-First template built and verified. No AI selection/sequencing pipeline yet — that's next.
+First template + sequencing pipeline built and verified end-to-end (plan → multi-scene `.lottie` → confirmed playing distinct scenes in-browser). Not yet built: the AI plan-generation step, a second template, and audio.
 
 ## License
 
