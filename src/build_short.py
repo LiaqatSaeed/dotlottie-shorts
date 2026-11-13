@@ -16,6 +16,9 @@ import zipfile
 from pathlib import Path
 
 from generate_audio import synthesize as synthesize_narration
+from audio_envelope import amplitude_envelope
+
+MOUTH_OPEN_THRESHOLD = 0.08
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 
@@ -60,10 +63,63 @@ def load_template(template_path, params):
     return data
 
 
+def find_group_transform(layers, group_name):
+    """Find a shape group by its 'nm' across all shape layers, and return its
+    transform item ('ty': 'tr') dict - the thing whose 'o' (opacity) we key
+    to fade that group in/out."""
+    for layer in layers:
+        for shape in layer.get("shapes", []):
+            if shape.get("ty") == "gr" and shape.get("nm") == group_name:
+                for item in shape["it"]:
+                    if item.get("ty") == "tr":
+                        return item
+    return None
+
+
+def mouth_opacity_keyframes(envelope, open_when_loud):
+    """Turn a per-frame amplitude envelope into hold keyframes for one
+    mouth shape's opacity - 100 when the mouth should be visible, else 0.
+    Only emits a keyframe when the state changes, to keep the JSON small."""
+    def state_at(frame_amp):
+        is_loud = frame_amp > MOUTH_OPEN_THRESHOLD
+        visible = is_loud if open_when_loud else not is_loud
+        return 100 if visible else 0
+
+    keyframes = []
+    prev_value = None
+    for t, amp in enumerate(envelope):
+        value = state_at(amp)
+        if value != prev_value:
+            keyframes.append({"t": t, "s": [value], "h": 1})
+            prev_value = value
+    if not keyframes:
+        keyframes = [{"t": 0, "s": [state_at(0)], "h": 1}]
+    keyframes.append({"t": len(envelope), "s": [keyframes[-1]["s"][0]]})
+    return keyframes
+
+
+def embed_lip_sync(scene_data, audio_bytes):
+    """Key the 'mouth-open'/'mouth-closed' shape groups' opacity to the
+    narration's amplitude envelope, so the mouth visibly moves while the
+    character speaks."""
+    fps = scene_data["fr"]
+    frame_count = scene_data["op"] - scene_data["ip"]
+    envelope = amplitude_envelope(audio_bytes, fps, frame_count)
+
+    open_tr = find_group_transform(scene_data["layers"], "mouth-open")
+    closed_tr = find_group_transform(scene_data["layers"], "mouth-closed")
+    if open_tr is None or closed_tr is None:
+        return  # template has no mouth shapes - nothing to sync
+
+    open_tr["o"] = {"a": 1, "k": mouth_opacity_keyframes(envelope, open_when_loud=True)}
+    closed_tr["o"] = {"a": 1, "k": mouth_opacity_keyframes(envelope, open_when_loud=False)}
+
+
 def embed_audio(scene_data, text, audio_id):
     """Synthesize narration for `text` and add it as an Audio layer (ty=6)
     spanning the scene's full duration, referencing a base64-embedded asset -
-    the same embedding convention Lottie uses for inline images."""
+    the same embedding convention Lottie uses for inline images. Returns the
+    raw audio bytes so the caller can also drive lip sync off them."""
     audio_bytes = synthesize_narration(text)
     b64 = base64.b64encode(audio_bytes).decode()
 
@@ -96,6 +152,7 @@ def embed_audio(scene_data, text, audio_id):
         "st": 0,
         "bm": 0,
     })
+    return audio_bytes
 
 
 def compose(plan):
@@ -112,7 +169,8 @@ def compose(plan):
         scene_data = load_template(template_path, scene.get("params", {}))
         scene_id = f"scene-{i}"
         if scene.get("narration"):
-            embed_audio(scene_data, scene["narration"], audio_id=f"{scene_id}-narration")
+            audio_bytes = embed_audio(scene_data, scene["narration"], audio_id=f"{scene_id}-narration")
+            embed_lip_sync(scene_data, audio_bytes)
         if canvas_w is None:
             canvas_w, canvas_h, fr = scene_data["w"], scene_data["h"], scene_data["fr"]
         duration = scene_data["op"] - scene_data["ip"]

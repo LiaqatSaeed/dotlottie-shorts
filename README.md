@@ -72,9 +72,17 @@ This isn't guesswork: the dotLottie/Lottie docs don't publish the exact internal
 
 **Known limitation:** each scene's audio layer spans the scene's full visual duration regardless of how long the synthesized line actually is - if narration runs longer than the scene, it'll be cut off. Not yet handled: sizing scene duration to narration length, or background music separate from narration.
 
+## Lip sync
+
+The character template now has two mouth shapes, `mouth-closed` (a thin resting line) and `mouth-open` (a wider dark shape), layered on top of the head so whichever is visible actually shows. `src/audio_envelope.py` decodes a scene's narration mp3 with ffmpeg and computes an RMS amplitude value per animation frame; `build_short.py` turns that into hold keyframes that flip the two mouth shapes' opacity in sync with it - loud frames open the mouth, quiet frames close it. No phoneme-level viseme matching, just an amplitude-driven toggle, which is the same basic technique tools like Adobe Character Animator's auto lip sync use for simple 2D characters.
+
+Verified by seeking the composed `.lottie` to specific frames in-browser and confirming the mouth shape actually changes exactly where the envelope says it should (closed at a silent frame, open at a loud one) - not just that the keyframes exist in the JSON.
+
+**Known limitations:** only two mouth states (open/closed), no in-between shapes for different vowel/consonant sounds; the amplitude threshold (`MOUTH_OPEN_THRESHOLD` in `build_short.py`) is a fixed constant, not calibrated per-voice.
+
 ## Status
 
-Prompt → AI-generated plan (with narration) → multi-scene `.lottie` with embedded, per-scene audio works end-to-end, verified in-browser both visually and for actual audio playback. Not yet built: a second template (so scenes vary by more than color), scene durations that adapt to narration length, and a second LLM provider (Anthropic) as an alternative to OpenAI.
+Prompt → AI-generated plan (with narration) → multi-scene `.lottie` with embedded audio and amplitude-driven lip sync works end-to-end, verified in-browser both visually (mouth shape, scene colors) and functionally (actual audio `.play()` calls). Not yet built: a second template (so scenes vary by more than color/face), scene durations that adapt to narration length, and a second LLM provider (Anthropic) as an alternative to OpenAI.
 
 ## License
 
