@@ -52,9 +52,21 @@ python3 src/build_short.py --plan plans/demo-explainer.json --out dist/demo-expl
 
 **What's still a toy:** with only one character template, "scenes" currently only vary by color. Real visual variety needs more templates (different characters, backgrounds, text overlays) — the composer and plan format don't change when those are added, since both are template-agnostic (every template is just a Lottie JSON + a `.config.json` describing its params).
 
+## AI plan generation
+
+`src/generate_plan.py` is the actual "AI" part: given a free-text prompt, it calls an LLM (OpenAI, `gpt-4o-mini`) with the schemas of every template currently on disk (discovered from their `.config.json` files, so the model can never reference a template or param that doesn't exist) and gets back a scene plan - which templates, in what order, what params - validated against those schemas before anything is built. This is what replaces hand-writing `plans/*.json` yourself.
+
+```bash
+echo "OPENAI_API_KEY=sk-..." > .env   # gitignored, never commit this
+python3 src/generate_plan.py --prompt "a short for a coffee subscription app" --out plans/generated.json
+python3 src/build_short.py --plan plans/generated.json --out dist/generated.lottie
+```
+
+`plans/generated-brewly.json` is a real, unedited output from this tool (prompt: a coffee-subscription app called Brewly) - it independently chose 5 scenes ("Welcome to Brewly" → "Discover Roasters" → "Get Beans Weekly" → "Cancel Anytime" → "Join Brewly Today!") and picked thematically fitting colors per beat (roast-brown tones for the roasters/beans scenes, a cool blue for the CTA) - none of that was written by hand. Composing and playing it back confirmed the scene-to-scene colors land exactly where the model placed them in the timeline.
+
 ## Status
 
-First template + sequencing pipeline built and verified end-to-end (plan → multi-scene `.lottie` → confirmed playing distinct scenes in-browser). Not yet built: the AI plan-generation step, a second template, and audio.
+Prompt → AI-generated plan → multi-scene `.lottie` works end-to-end, verified in-browser. Not yet built: a second template (so scenes vary by more than color), audio, and a second LLM provider (Anthropic) as an alternative to OpenAI.
 
 ## License
 
