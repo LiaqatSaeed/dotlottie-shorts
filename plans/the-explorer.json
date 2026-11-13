@@ -1,0 +1,105 @@
+{
+  "animationId": "point-character",
+  "scenes": [
+    {
+      "label": "Finding the Map",
+      "template": "templates/characters/nod-character.json",
+      "narration": "Look what I found!",
+      "params": {
+        "backgroundColor": [
+          0.8,
+          0.9,
+          0.7,
+          1
+        ],
+        "skinColor": [
+          0.98,
+          0.82,
+          0.65,
+          1
+        ],
+        "outfitColor": [
+          0.5,
+          0.3,
+          0.2,
+          1
+        ]
+      }
+    },
+    {
+      "label": "Setting Off",
+      "template": "templates/characters/wave-character.json",
+      "narration": "Time for an adventure!",
+      "params": {
+        "backgroundColor": [
+          0.95,
+          0.96,
+          0.98,
+          1
+        ],
+        "skinColor": [
+          0.98,
+          0.82,
+          0.65,
+          1
+        ],
+        "outfitColor": [
+          0.2,
+          0.6,
+          0.55,
+          1
+        ]
+      }
+    },
+    {
+      "label": "Pointing Out Treasure",
+      "template": "templates/characters/point-character.json",
+      "narration": "The treasure is right here!",
+      "params": {
+        "backgroundColor": [
+          0.9,
+          0.8,
+          0.6,
+          1
+        ],
+        "skinColor": [
+          0.98,
+          0.82,
+          0.65,
+          1
+        ],
+        "outfitColor": [
+          0.4,
+          0.5,
+          0.6,
+          1
+        ]
+      }
+    },
+    {
+      "label": "Explaining to Friends",
+      "template": "templates/characters/nod-character.json",
+      "narration": "We'll share it with everyone!",
+      "params": {
+        "backgroundColor": [
+          0.95,
+          0.96,
+          0.98,
+          1
+        ],
+        "skinColor": [
+          0.98,
+          0.82,
+          0.65,
+          1
+        ],
+        "outfitColor": [
+          0.7,
+          0.3,
+          0.2,
+          1
+        ]
+      }
+    }
+  ]
+}

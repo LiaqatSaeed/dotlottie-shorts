@@ -94,6 +94,16 @@ All three share the exact same mouth shapes/coordinates and color-param conventi
 
 That `description` field is what the AI plan generator actually uses to decide fit, and it's been tested past just two options: a budgeting-app prompt spanning all three narrative roles at once (`plans/generated-penny.json`) made the model independently pick `wave-character` for "Welcome to Penny," `point-character` for "Track expenses with just one tap!," and `nod-character` for "Your data remains completely private" - matching each template's intended role with no hints beyond the description text.
 
+## A complete example: "The Explorer"
+
+`plans/the-explorer.json` - a real 4-scene story generated from one prompt ("a curious little explorer finds an old map, sets off, points out a hidden treasure spot, then explains they'll share it with everyone back home"), using all three templates for their intended narrative roles (nod → wave → point → nod) with full narration and lip sync, composed to `dist/the-explorer.lottie` (12s).
+
+`scripts/make_standalone_preview.py` packages any composed `.lottie` into a single self-contained HTML file (the `.lottie`'s bytes embedded as a base64 data URI, so there's no fetch and no local server needed) - open it by double-clicking, nothing to run:
+
+```bash
+python3 scripts/make_standalone_preview.py --lottie dist/the-explorer.lottie --out dist/the-explorer-standalone.html --title "The Explorer"
+```
+
 ## Status
 
 Prompt → AI-generated plan (choosing between 3 templates by narrative role, with narration) → multi-scene `.lottie` with embedded audio, amplitude-driven lip sync, and duration-aware scenes works end-to-end, verified in-browser (pose/motion/mouth-shape/colors, held final pose through an extended tail) and functionally (actual audio `.play()` calls, correct per-template selection across all 3, correctly stretched/un-stretched durations). Not yet built: background music separate from narration, and a second LLM provider (Anthropic) as an alternative to OpenAI.
