@@ -34,6 +34,14 @@ def _frame_chunks(samples, fps, frame_count):
         yield samples[start:start + samples_per_frame]
 
 
+def audio_duration_seconds(audio_bytes: bytes) -> float:
+    """Decoded length of the audio in seconds - used to size a scene's
+    duration to its narration instead of a fixed template length."""
+    pcm = decode_to_pcm16_mono(audio_bytes)
+    sample_count = len(pcm) // 2  # s16le = 2 bytes/sample, mono
+    return sample_count / SAMPLE_RATE
+
+
 def amplitude_envelope(audio_bytes: bytes, fps: float, frame_count: int) -> list[float]:
     """Return `frame_count` RMS amplitude values (0-1, roughly) - one per
     animation frame at `fps` - for the given audio."""

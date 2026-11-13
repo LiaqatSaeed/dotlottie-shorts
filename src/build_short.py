@@ -15,8 +15,12 @@ import os
 import zipfile
 from pathlib import Path
 
+import math
+
 from generate_audio import synthesize as synthesize_narration
-from audio_envelope import extract_features
+from audio_envelope import extract_features, audio_duration_seconds
+
+PAD_SECONDS = 0.3  # headroom after narration ends, so it doesn't cut off exactly at the last frame
 
 # Rough viseme classification from two cheap per-frame signal features:
 # RMS (loudness) and zero-crossing rate (a standard proxy for how
@@ -130,12 +134,22 @@ def embed_lip_sync(scene_data, audio_bytes):
         tr["o"] = {"a": 1, "k": mouth_opacity_keyframes(active_states, name)}
 
 
-def embed_audio(scene_data, text, audio_id):
-    """Synthesize narration for `text` and add it as an Audio layer (ty=6)
-    spanning the scene's full duration, referencing a base64-embedded asset -
-    the same embedding convention Lottie uses for inline images. Returns the
-    raw audio bytes so the caller can also drive lip sync off them."""
-    audio_bytes = synthesize_narration(text)
+def extend_scene_duration(scene_data, new_duration):
+    """Stretch a scene's (and every one of its layers') out-point to
+    new_duration, assuming all ip/op currently start at 0 - true for every
+    template here. Any property with no keyframe past the template's
+    original length simply holds its last value for the extra time, which
+    is exactly what we want: the character finishes its motion and then
+    holds its final pose while narration keeps playing."""
+    scene_data["op"] = scene_data["ip"] + new_duration
+    for layer in scene_data["layers"]:
+        layer["op"] = new_duration
+
+
+def embed_audio(scene_data, audio_bytes, audio_id):
+    """Add pre-synthesized narration audio as an Audio layer (ty=6) spanning
+    the scene's full duration, referencing a base64-embedded asset - the
+    same embedding convention Lottie uses for inline images."""
     b64 = base64.b64encode(audio_bytes).decode()
 
     scene_data.setdefault("assets", []).append({
@@ -167,7 +181,6 @@ def embed_audio(scene_data, text, audio_id):
         "st": 0,
         "bm": 0,
     })
-    return audio_bytes
 
 
 def compose(plan):
@@ -183,8 +196,15 @@ def compose(plan):
         template_path = REPO_ROOT / scene["template"]
         scene_data = load_template(template_path, scene.get("params", {}))
         scene_id = f"scene-{i}"
+        fps = scene_data["fr"]
+
         if scene.get("narration"):
-            audio_bytes = embed_audio(scene_data, scene["narration"], audio_id=f"{scene_id}-narration")
+            audio_bytes = synthesize_narration(scene["narration"])
+            template_duration = scene_data["op"] - scene_data["ip"]
+            audio_frames = math.ceil((audio_duration_seconds(audio_bytes) + PAD_SECONDS) * fps)
+            if audio_frames > template_duration:
+                extend_scene_duration(scene_data, audio_frames)
+            embed_audio(scene_data, audio_bytes, audio_id=f"{scene_id}-narration")
             embed_lip_sync(scene_data, audio_bytes)
         if canvas_w is None:
             canvas_w, canvas_h, fr = scene_data["w"], scene_data["h"], scene_data["fr"]

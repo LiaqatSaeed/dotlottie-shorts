@@ -1,0 +1,23 @@
+{
+  "animationId": "long-narration-test",
+  "scenes": [
+    {
+      "label": "long-scene",
+      "template": "templates/characters/wave-character.json",
+      "narration": "This is a much longer line of narration than the usual short scene, written specifically to run well past three seconds so the scene duration has to stretch to fit all of it without getting cut off.",
+      "params": {
+        "backgroundColor": [0.95, 0.96, 0.98, 1],
+        "outfitColor": [0.6, 0.3, 0.7, 1]
+      }
+    },
+    {
+      "label": "short-scene",
+      "template": "templates/characters/nod-character.json",
+      "narration": "Short one.",
+      "params": {
+        "backgroundColor": [0.92, 0.95, 0.9, 1],
+        "outfitColor": [0.2, 0.5, 0.3, 1]
+      }
+    }
+  ]
+}

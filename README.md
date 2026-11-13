@@ -70,7 +70,9 @@ python3 src/build_short.py --plan plans/generated.json --out dist/generated.lott
 
 This isn't guesswork: the dotLottie/Lottie docs don't publish the exact internal audio schema, so it was verified empirically - instrumenting `HTMLMediaElement.prototype.play` in the browser showed the player actually creates an `<audio>` element and calls `.play()` on a blob built from our embedded asset, once on a current player version (`@lottiefiles/dotlottie-web@0.83.2` - the pinned `0.47.0` used earlier silently did nothing with the audio layer, so the version matters).
 
-**Known limitation:** each scene's audio layer spans the scene's full visual duration regardless of how long the synthesized line actually is - if narration runs longer than the scene, it'll be cut off. Not yet handled: sizing scene duration to narration length, or background music separate from narration.
+A scene's duration now adapts to its narration automatically: `build_short.py` synthesizes the audio first, measures its real length (`audio_envelope.audio_duration_seconds`, +0.3s padding), and if that's longer than the template's default length, stretches the scene's (and every one of its layers') out-point to fit - layers with no keyframes past the template's original length simply hold their last pose for the extra time (verified: a character mid-wave correctly settles to resting arms-down rather than freezing mid-gesture or disappearing), while lip sync is computed *after* this extension so the mouth keeps moving for the narration's full real length, not just the template's original 3s. A short line leaves the scene at the template's normal length; nothing shrinks.
+
+**Known limitation:** background music separate from narration isn't supported yet - only one audio layer (the narration) per scene.
 
 ## Lip sync
 
@@ -90,7 +92,7 @@ The point of a second template wasn't just "more variety" - it's proof the templ
 
 ## Status
 
-Prompt → AI-generated plan (choosing between 2 templates, with narration) → multi-scene `.lottie` with embedded audio and amplitude-driven lip sync works end-to-end, verified in-browser (pose/motion/mouth-shape/colors) and functionally (actual audio `.play()` calls, correct per-template selection). Not yet built: scene durations that adapt to narration length, and a second LLM provider (Anthropic) as an alternative to OpenAI.
+Prompt → AI-generated plan (choosing between 2 templates, with narration) → multi-scene `.lottie` with embedded audio, amplitude-driven lip sync, and duration-aware scenes works end-to-end, verified in-browser (pose/motion/mouth-shape/colors, held final pose through an extended tail) and functionally (actual audio `.play()` calls, correct per-template selection, correctly stretched/un-stretched durations). Not yet built: background music separate from narration, and a second LLM provider (Anthropic) as an alternative to OpenAI.
 
 ## License
 
