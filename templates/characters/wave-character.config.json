@@ -1,0 +1,28 @@
+{
+  "id": "wave-character",
+  "description": "A single character doing a wave gesture, 3s loop at 30fps (90 frames), 512x512.",
+  "source": "wave-character.json",
+  "durationFrames": 90,
+  "fps": 30,
+  "params": [
+    {
+      "key": "backgroundColor",
+      "type": "color",
+      "targets": [{ "shapeName": "bg-fill" }],
+      "default": [0.95, 0.96, 0.98, 1]
+    },
+    {
+      "key": "skinColor",
+      "type": "color",
+      "targets": [{ "shapeName": "character-skin-fill" }],
+      "default": [0.98, 0.82, 0.65, 1]
+    },
+    {
+      "key": "outfitColor",
+      "type": "color",
+      "targets": [{ "shapeName": "character-outfit-fill" }],
+      "default": [0.2, 0.6, 0.55, 1]
+    }
+  ],
+  "notes": "Colors are matched by the 'nm' (name) field on the shape's fill item, not by string token replacement — a builder script should parse the Lottie JSON and rewrite the matching fill's 'c.k' array. This keeps the source file valid, renderable Lottie JSON on its own."
+}

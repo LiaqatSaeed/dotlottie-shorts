@@ -21,9 +21,26 @@ This project narrows the problem to something actually buildable today: instead 
 - Freeform character animation, lip-sync, or narrative storytelling beyond the explainer template set
 - Replacing or competing with LottieFiles' own tooling — this is meant to explore a gap (multi-scene generation with audio) above their current single-clip AI tools
 
+## First template
+
+`templates/characters/wave-character.json` — a hand-authored, valid Lottie animation (character made of simple shapes, waving one arm, 3s loop @30fps, 512x512). `templates/characters/wave-character.config.json` describes its parameterizable fields (background/skin/outfit color), matched by shape name rather than string-token replacement, so the source JSON stays valid, renderable Lottie on its own.
+
+Package any template's Lottie JSON into a `.lottie` (dotLottie) container:
+
+```bash
+scripts/package-dotlottie.sh templates/characters/wave-character.json wave-character dist/wave-character.lottie
+```
+
+Preview it locally:
+
+- Raw Lottie JSON (via `lottie-web`): serve the repo root and open `docs/preview.html`.
+- Packaged `.lottie` (via `dotlottie-web`, the actual target runtime): open `docs/preview-dotlottie.html` the same way.
+
+Both were verified to render and animate correctly in a browser.
+
 ## Status
 
-Early scaffolding. No generator implemented yet.
+First template built and verified. No AI selection/sequencing pipeline yet — that's next.
 
 ## License
 

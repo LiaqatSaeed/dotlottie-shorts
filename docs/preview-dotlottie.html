@@ -1,0 +1,30 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <title>wave-character .lottie preview</title>
+  <script type="module">
+    import { DotLottie } from "https://cdn.jsdelivr.net/npm/@lottiefiles/dotlottie-web@0.47.0/+esm";
+    window.addEventListener('DOMContentLoaded', () => {
+      const canvas = document.getElementById('anim');
+      try {
+        new DotLottie({
+          canvas,
+          src: '../dist/wave-character.lottie',
+          loop: true,
+          autoplay: true,
+        });
+      } catch (e) {
+        document.body.innerHTML = '<pre style="color:red">' + e + '</pre>';
+      }
+    });
+  </script>
+  <style>
+    body { background: #222; display: flex; align-items: center; justify-content: center; height: 100vh; margin: 0; }
+    #anim { width: 400px; height: 400px; background: #fff; }
+  </style>
+</head>
+<body>
+  <canvas id="anim" width="400" height="400"></canvas>
+</body>
+</html>

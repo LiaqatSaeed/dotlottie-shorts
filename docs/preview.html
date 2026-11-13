@@ -1,0 +1,31 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <title>wave-character preview</title>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/bodymovin/5.12.2/lottie.min.js"></script>
+  <style>
+    body { background: #222; display: flex; align-items: center; justify-content: center; height: 100vh; margin: 0; }
+    #anim { width: 400px; height: 400px; background: #fff; }
+  </style>
+</head>
+<body>
+  <div id="anim"></div>
+  <script>
+    fetch('../templates/characters/wave-character.json')
+      .then(r => r.json())
+      .then(data => {
+        lottie.loadAnimation({
+          container: document.getElementById('anim'),
+          renderer: 'svg',
+          loop: true,
+          autoplay: true,
+          animationData: data
+        });
+      })
+      .catch(err => {
+        document.body.innerHTML = '<pre style="color:red">' + err + '</pre>';
+      });
+  </script>
+</body>
+</html>
