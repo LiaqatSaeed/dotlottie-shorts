@@ -1,0 +1,28 @@
+{
+  "id": "point-character",
+  "description": "A character holding one arm raised and extended, gesturing/pointing toward something off to the side with a small repeated emphasis motion. Best for calling out a specific feature, highlight, or benefit - 'look at this' moments - rather than a greeting or a calm explanation. 3s loop at 30fps (90 frames), 512x512.",
+  "source": "point-character.json",
+  "durationFrames": 90,
+  "fps": 30,
+  "params": [
+    {
+      "key": "backgroundColor",
+      "type": "color",
+      "targets": [{ "shapeName": "bg-fill" }],
+      "default": [0.95, 0.96, 0.98, 1]
+    },
+    {
+      "key": "skinColor",
+      "type": "color",
+      "targets": [{ "shapeName": "character-skin-fill" }],
+      "default": [0.98, 0.82, 0.65, 1]
+    },
+    {
+      "key": "outfitColor",
+      "type": "color",
+      "targets": [{ "shapeName": "character-outfit-fill" }],
+      "default": [0.2, 0.6, 0.55, 1]
+    }
+  ],
+  "notes": "Same param/color convention and mouth-shape coordinates as wave-character.config.json / nod-character.config.json, so lip sync and the compositor work on it identically."
+}

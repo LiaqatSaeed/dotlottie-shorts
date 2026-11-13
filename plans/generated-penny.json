@@ -1,0 +1,80 @@
+{
+  "animationId": "point-character",
+  "scenes": [
+    {
+      "label": "Welcome New Users",
+      "template": "templates/characters/wave-character.json",
+      "narration": "Welcome to Penny, your budgeting buddy!",
+      "params": {
+        "backgroundColor": [
+          0.95,
+          0.96,
+          0.98,
+          1
+        ],
+        "skinColor": [
+          0.98,
+          0.82,
+          0.65,
+          1
+        ],
+        "outfitColor": [
+          0.5,
+          0.8,
+          0.2,
+          1
+        ]
+      }
+    },
+    {
+      "label": "Highlight One-Tap Tracking",
+      "template": "templates/characters/point-character.json",
+      "narration": "Track expenses with just one tap!",
+      "params": {
+        "backgroundColor": [
+          0.95,
+          0.96,
+          0.98,
+          1
+        ],
+        "skinColor": [
+          0.98,
+          0.82,
+          0.65,
+          1
+        ],
+        "outfitColor": [
+          0.2,
+          0.6,
+          0.55,
+          1
+        ]
+      }
+    },
+    {
+      "label": "Calmly Explain Privacy",
+      "template": "templates/characters/nod-character.json",
+      "narration": "Your data remains completely private.",
+      "params": {
+        "backgroundColor": [
+          0.95,
+          0.96,
+          0.98,
+          1
+        ],
+        "skinColor": [
+          0.98,
+          0.82,
+          0.65,
+          1
+        ],
+        "outfitColor": [
+          0.8,
+          0.2,
+          0.2,
+          1
+        ]
+      }
+    }
+  ]
+}

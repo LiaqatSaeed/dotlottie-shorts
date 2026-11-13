@@ -1,0 +1,14 @@
+{
+  "animationId": "point-character-test",
+  "scenes": [
+    {
+      "label": "feature-callout",
+      "template": "templates/characters/point-character.json",
+      "narration": "Check out this one amazing feature.",
+      "params": {
+        "backgroundColor": [0.97, 0.94, 0.85, 1],
+        "outfitColor": [0.85, 0.5, 0.15, 1]
+      }
+    }
+  ]
+}

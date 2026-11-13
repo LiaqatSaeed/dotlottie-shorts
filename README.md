@@ -84,15 +84,19 @@ Verified by seeking the composed `.lottie` to specific frames the classifier ass
 
 **Known limitations:** still a rough 4-bucket classification, not real viseme/phoneme detection; thresholds (`SILENCE_RMS`, `WIDE_ZCR`, `ROUND_ZCR` in `build_short.py`) are fixed constants calibrated on one voice, not adaptive per-speaker.
 
-## Second template
+## Three templates, three narrative roles
 
-`templates/characters/nod-character.json` - a character standing with both arms at sides, idly head-bobbing, instead of waving. It reuses the exact same mouth shapes/coordinates and color-param convention as `wave-character`, so lip sync and the compositor work on it identically with no special-casing.
+- `wave-character` - greeting/energetic (waves one arm)
+- `nod-character` - calm/explanatory (both arms at sides, idle head-bob)
+- `point-character` - feature callout/"look at this" (one arm raised, pointing, with a small repeated emphasis wag)
 
-The point of a second template wasn't just "more variety" - it's proof the template system actually generalizes. `templates/characters/*.config.json`'s free-text `description` field is what the AI plan generator reads to decide which template fits a given scene; giving `nod-character` a "calmer/more neutral... reflective or explanatory beats" description and testing with a meditation-app prompt (`plans/generated-calmly.json`) produced exactly the expected split - the model picked `nod-character` for the calm/explanatory scenes and `wave-character` for the energetic "Start your journey today!" call-to-action, on its own, from that one description field.
+All three share the exact same mouth shapes/coordinates and color-param convention, so lip sync and the compositor need zero special-casing to support any of them - adding a template is just: author the Lottie JSON with those same shape names, write a `.config.json` with a free-text `description`, done.
+
+That `description` field is what the AI plan generator actually uses to decide fit, and it's been tested past just two options: a budgeting-app prompt spanning all three narrative roles at once (`plans/generated-penny.json`) made the model independently pick `wave-character` for "Welcome to Penny," `point-character` for "Track expenses with just one tap!," and `nod-character` for "Your data remains completely private" - matching each template's intended role with no hints beyond the description text.
 
 ## Status
 
-Prompt → AI-generated plan (choosing between 2 templates, with narration) → multi-scene `.lottie` with embedded audio, amplitude-driven lip sync, and duration-aware scenes works end-to-end, verified in-browser (pose/motion/mouth-shape/colors, held final pose through an extended tail) and functionally (actual audio `.play()` calls, correct per-template selection, correctly stretched/un-stretched durations). Not yet built: background music separate from narration, and a second LLM provider (Anthropic) as an alternative to OpenAI.
+Prompt → AI-generated plan (choosing between 3 templates by narrative role, with narration) → multi-scene `.lottie` with embedded audio, amplitude-driven lip sync, and duration-aware scenes works end-to-end, verified in-browser (pose/motion/mouth-shape/colors, held final pose through an extended tail) and functionally (actual audio `.play()` calls, correct per-template selection across all 3, correctly stretched/un-stretched durations). Not yet built: background music separate from narration, and a second LLM provider (Anthropic) as an alternative to OpenAI.
 
 ## License
 
