@@ -1,0 +1,23 @@
+{
+  "animationId": "two-templates-test",
+  "scenes": [
+    {
+      "label": "greeting",
+      "template": "templates/characters/wave-character.json",
+      "narration": "Hey there, welcome aboard!",
+      "params": {
+        "backgroundColor": [0.95, 0.96, 0.98, 1],
+        "outfitColor": [0.75, 0.25, 0.25, 1]
+      }
+    },
+    {
+      "label": "explain",
+      "template": "templates/characters/nod-character.json",
+      "narration": "Here is how it actually works.",
+      "params": {
+        "backgroundColor": [0.92, 0.95, 0.9, 1],
+        "outfitColor": [0.2, 0.4, 0.8, 1]
+      }
+    }
+  ]
+}

@@ -1,0 +1,28 @@
+{
+  "id": "nod-character",
+  "description": "A character standing with both arms at sides, idly nodding/bobbing, 3s loop at 30fps (90 frames), 512x512. Calmer/more neutral than wave-character - good for reflective or explanatory beats rather than greetings.",
+  "source": "nod-character.json",
+  "durationFrames": 90,
+  "fps": 30,
+  "params": [
+    {
+      "key": "backgroundColor",
+      "type": "color",
+      "targets": [{ "shapeName": "bg-fill" }],
+      "default": [0.95, 0.96, 0.98, 1]
+    },
+    {
+      "key": "skinColor",
+      "type": "color",
+      "targets": [{ "shapeName": "character-skin-fill" }],
+      "default": [0.98, 0.82, 0.65, 1]
+    },
+    {
+      "key": "outfitColor",
+      "type": "color",
+      "targets": [{ "shapeName": "character-outfit-fill" }],
+      "default": [0.2, 0.6, 0.55, 1]
+    }
+  ],
+  "notes": "Same param/color convention as wave-character.config.json. Also carries the same mouth-closed/mouth-round/mouth-wide/mouth-mid shapes at the same coordinates, so build_short.py's lip sync works on it identically."
+}

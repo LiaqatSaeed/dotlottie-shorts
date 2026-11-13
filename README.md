@@ -82,9 +82,15 @@ Verified by seeking the composed `.lottie` to specific frames the classifier ass
 
 **Known limitations:** still a rough 4-bucket classification, not real viseme/phoneme detection; thresholds (`SILENCE_RMS`, `WIDE_ZCR`, `ROUND_ZCR` in `build_short.py`) are fixed constants calibrated on one voice, not adaptive per-speaker.
 
+## Second template
+
+`templates/characters/nod-character.json` - a character standing with both arms at sides, idly head-bobbing, instead of waving. It reuses the exact same mouth shapes/coordinates and color-param convention as `wave-character`, so lip sync and the compositor work on it identically with no special-casing.
+
+The point of a second template wasn't just "more variety" - it's proof the template system actually generalizes. `templates/characters/*.config.json`'s free-text `description` field is what the AI plan generator reads to decide which template fits a given scene; giving `nod-character` a "calmer/more neutral... reflective or explanatory beats" description and testing with a meditation-app prompt (`plans/generated-calmly.json`) produced exactly the expected split - the model picked `nod-character` for the calm/explanatory scenes and `wave-character` for the energetic "Start your journey today!" call-to-action, on its own, from that one description field.
+
 ## Status
 
-Prompt → AI-generated plan (with narration) → multi-scene `.lottie` with embedded audio and amplitude-driven lip sync works end-to-end, verified in-browser both visually (mouth shape, scene colors) and functionally (actual audio `.play()` calls). Not yet built: a second template (so scenes vary by more than color/face), scene durations that adapt to narration length, and a second LLM provider (Anthropic) as an alternative to OpenAI.
+Prompt → AI-generated plan (choosing between 2 templates, with narration) → multi-scene `.lottie` with embedded audio and amplitude-driven lip sync works end-to-end, verified in-browser (pose/motion/mouth-shape/colors) and functionally (actual audio `.play()` calls, correct per-template selection). Not yet built: scene durations that adapt to narration length, and a second LLM provider (Anthropic) as an alternative to OpenAI.
 
 ## License
 
