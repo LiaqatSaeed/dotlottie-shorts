@@ -15,6 +15,7 @@ Usage:
 import argparse
 import json
 import os
+import sys
 import urllib.request
 import urllib.error
 from pathlib import Path
@@ -22,6 +23,16 @@ from pathlib import Path
 REPO_ROOT = Path(__file__).resolve().parent.parent
 TEMPLATES_DIR = REPO_ROOT / "templates"
 MODEL = "gpt-4o-mini"
+
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from props import PROPS  # noqa: E402
+
+PROP_HINTS = {
+    "star": "celebration, achievement, a highlight moment",
+    "heart": "love, care, a favorite, something people appreciate",
+    "idea": "an insight, tip, or realization - a lightbulb moment",
+    "map": "a journey, exploration, or plan - finding/going somewhere",
+}
 
 
 def discover_templates():
@@ -45,16 +56,22 @@ def discover_templates():
 
 
 def build_system_prompt(available_templates):
+    prop_list = "\n".join(f'- "{name}": fits {hint}' for name, hint in PROP_HINTS.items())
     return (
         "You write short-film scene plans for an animation pipeline. "
         "You may ONLY use the templates and param keys listed below - "
         "never invent a template path or a param key that isn't listed. "
         "Each scene must set every param the template declares.\n\n"
         f"Available templates:\n{json.dumps(available_templates, indent=2)}\n\n"
+        "Each scene may also show a small decorative icon in the corner - "
+        f"pick one ONLY if it genuinely fits that scene's content:\n{prop_list}\n"
+        "Omit the 'prop' field entirely for a scene if none of these fit - "
+        "do not force one in.\n\n"
         "Respond with a JSON object of this exact shape:\n"
         '{"animationId": "<kebab-case id>", "scenes": [\n'
         '  {"label": "<short label>", "template": "<templatePath from above>", '
         '"narration": "<one short spoken line for this scene, 4-10 words>", '
+        '"prop": "<one of the icon names above, or omit this field>", '
         '"params": {"<paramKey>": <value matching that param\'s type>}}\n'
         "]}\n"
         "Plan 3 to 6 scenes that tell a coherent short story arc "
@@ -122,6 +139,8 @@ def validate_plan(plan, available_templates):
     for i, scene in enumerate(plan["scenes"]):
         if not isinstance(scene.get("narration"), str) or not scene["narration"].strip():
             raise ValueError(f"Scene {i}: missing or empty 'narration'")
+        if "prop" in scene and scene["prop"] not in PROPS:
+            raise ValueError(f"Scene {i}: unknown prop '{scene['prop']}' - must be one of {list(PROPS)}")
         template_path = scene.get("template")
         if template_path not in by_path:
             raise ValueError(f"Scene {i}: unknown template '{template_path}'")

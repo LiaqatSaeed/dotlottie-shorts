@@ -108,6 +108,14 @@ python3 scripts/make_standalone_preview.py --lottie dist/the-explorer.lottie --o
 
 All three templates now have legs, shoes, hair, and rounded hands - not just a head/body/arm "shape blob." Added by inspecting a free, properly-rigged human-character animation on the LottieFiles marketplace (`Character.lottie`, bezier-path art with separate Head/Body/Arm/Leg layers) for reference - its generic fill names and 1080x1080 canvas made directly reusing it more work than it was worth right now (see `external-refs/` locally, gitignored, not redistributed), but it clarified exactly what was missing from our own shapes, which were then added directly using the existing color-param system (no new params needed - hair/shoes use fixed colors, legs reuse `character-outfit-fill`).
 
+## Props
+
+`src/props.py` defines a small library of decorative icons - `star`, `heart`, `idea`, `map` - each a few simple filled shapes (no strokes: see the note in that file about why). `build_short.py`'s `embed_prop()` places one in a scene's top-right corner as its own layer when the plan sets a `"prop"` field, so a scene can show something relevant to what's being said instead of just a character on a flat color.
+
+The AI plan generator now offers these to the model with a one-line hint each (e.g. "map: fits a journey, exploration... finding/going somewhere") and explicitly tells it to omit the field rather than force one in. Tested with a travel-app prompt (`plans/generated-roamly.json`): the model picked `map` for "discovering new destinations," left the tips scene with no icon, and picked `heart` for "people love how easy it is" - selective, contextual use, not every scene getting a badge.
+
+Caught and fixed two real bugs while building this: the map's stroke-based line/X-mark silently failed to render (no console error) - this player's ThorVG build appears not to support `"st"` stroke shape items, so they were rebuilt as thin rotated filled rectangles instead; and the same front-to-back group-ordering mistake as before (the opaque paper background was listed first/frontmost, hiding the decorative lines behind it).
+
 ## Status
 
 Prompt → AI-generated plan (choosing between 3 templates by narrative role, with narration) → multi-scene `.lottie` with embedded audio, amplitude-driven lip sync, and duration-aware scenes works end-to-end, verified in-browser (pose/motion/mouth-shape/colors, held final pose through an extended tail) and functionally (actual audio `.play()` calls, correct per-template selection across all 3, correctly stretched/un-stretched durations). Not yet built: background music separate from narration, and a second LLM provider (Anthropic) as an alternative to OpenAI.

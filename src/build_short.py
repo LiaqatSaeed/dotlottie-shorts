@@ -19,8 +19,10 @@ import math
 
 from generate_audio import synthesize as synthesize_narration
 from audio_envelope import extract_features, audio_duration_seconds
+from props import PROPS
 
 PAD_SECONDS = 0.3  # headroom after narration ends, so it doesn't cut off exactly at the last frame
+PROP_POSITION = [420, 90]  # top-right corner, comp coordinates
 
 # Rough viseme classification from two cheap per-frame signal features:
 # RMS (loudness) and zero-crossing rate (a standard proxy for how
@@ -146,6 +148,58 @@ def extend_scene_duration(scene_data, new_duration):
         layer["op"] = new_duration
 
 
+def embed_prop(scene_data, prop_name, position=PROP_POSITION):
+    """Add a small decorative icon (see props.py) as its own layer at a
+    fixed corner position, so a scene can show something relevant to what's
+    being said instead of just a character on a flat color."""
+    if prop_name not in PROPS:
+        return  # unknown prop name - silently skip rather than crash the build
+
+    shapes = []
+    for i, group_spec in enumerate(PROPS[prop_name]):
+        style = dict(group_spec["style"])
+        style.setdefault("o", {"a": 0, "k": 100})
+        if style["ty"] == "st":
+            style.setdefault("lc", 1)
+            style.setdefault("lj", 1)
+            style.setdefault("ml", 10)
+        xf = group_spec.get("transform", {})
+        shapes.append({
+            "ty": "gr",
+            "nm": f"prop-{prop_name}-group-{i}",
+            "it": [
+                *group_spec["shapes"],
+                style,
+                {"ty": "tr", "p": {"a": 0, "k": xf.get("p", [0, 0])}, "a": {"a": 0, "k": [0, 0]},
+                 "s": {"a": 0, "k": [100, 100]}, "r": {"a": 0, "k": xf.get("r", 0)}, "o": {"a": 0, "k": 100},
+                 "sk": {"a": 0, "k": 0}, "sa": {"a": 0, "k": 0}},
+            ],
+        })
+
+    duration = scene_data["op"] - scene_data["ip"]
+    next_ind = max((layer.get("ind", 0) for layer in scene_data["layers"]), default=0) + 1
+    scene_data["layers"].insert(0, {
+        "ddd": 0,
+        "ind": next_ind,
+        "ty": 4,
+        "nm": f"prop-{prop_name}",
+        "sr": 1,
+        "ks": {
+            "o": {"a": 0, "k": 100},
+            "r": {"a": 0, "k": 0},
+            "p": {"a": 0, "k": [position[0], position[1], 0]},
+            "a": {"a": 0, "k": [0, 0, 0]},
+            "s": {"a": 0, "k": [100, 100, 100]},
+        },
+        "ao": 0,
+        "shapes": shapes,
+        "ip": 0,
+        "op": duration,
+        "st": 0,
+        "bm": 0,
+    })
+
+
 def embed_audio(scene_data, audio_bytes, audio_id):
     """Add pre-synthesized narration audio as an Audio layer (ty=6) spanning
     the scene's full duration, referencing a base64-embedded asset - the
@@ -206,6 +260,8 @@ def compose(plan):
                 extend_scene_duration(scene_data, audio_frames)
             embed_audio(scene_data, audio_bytes, audio_id=f"{scene_id}-narration")
             embed_lip_sync(scene_data, audio_bytes)
+        if scene.get("prop"):
+            embed_prop(scene_data, scene["prop"])
         if canvas_w is None:
             canvas_w, canvas_h, fr = scene_data["w"], scene_data["h"], scene_data["fr"]
         duration = scene_data["op"] - scene_data["ip"]

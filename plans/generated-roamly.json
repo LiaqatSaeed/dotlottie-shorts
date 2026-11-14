@@ -1,0 +1,82 @@
+{
+  "animationId": "roamly-travel-app",
+  "scenes": [
+    {
+      "label": "Discovering New Destinations",
+      "template": "templates/characters/point-character.json",
+      "narration": "Explore amazing places with Roamly.",
+      "prop": "map",
+      "params": {
+        "backgroundColor": [
+          0.95,
+          0.96,
+          0.98,
+          1
+        ],
+        "skinColor": [
+          0.98,
+          0.82,
+          0.65,
+          1
+        ],
+        "outfitColor": [
+          0.2,
+          0.6,
+          0.55,
+          1
+        ]
+      }
+    },
+    {
+      "label": "Smart Itinerary Tips",
+      "template": "templates/characters/nod-character.json",
+      "narration": "Get smart tips for your journey.",
+      "params": {
+        "backgroundColor": [
+          0.9,
+          0.95,
+          0.97,
+          1
+        ],
+        "skinColor": [
+          0.98,
+          0.82,
+          0.65,
+          1
+        ],
+        "outfitColor": [
+          0.3,
+          0.5,
+          0.7,
+          1
+        ]
+      }
+    },
+    {
+      "label": "Easy to Use",
+      "template": "templates/characters/wave-character.json",
+      "narration": "People love how easy Roamly is!",
+      "prop": "heart",
+      "params": {
+        "backgroundColor": [
+          0.95,
+          0.96,
+          0.98,
+          1
+        ],
+        "skinColor": [
+          0.98,
+          0.82,
+          0.65,
+          1
+        ],
+        "outfitColor": [
+          0.5,
+          0.7,
+          0.3,
+          1
+        ]
+      }
+    }
+  ]
+}
