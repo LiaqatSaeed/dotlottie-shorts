@@ -138,9 +138,17 @@ Verified in-browser (`docs/preview-slots.html`) on a single unmodified `wave-cha
 
 **Relationship to the build-time color params:** these are two independent mechanisms that happen to target the same properties. The Python pipeline (`build_short.py`) still bakes in colors at compose time per scene, driven by the AI-generated plan - that's unchanged and is how this project actually varies colors scene-to-scene today. The slot IDs are an *additional* capability layered on top, for a downstream consumer to further re-theme an already-built `.lottie` without going through this pipeline at all.
 
+## Aspect ratio
+
+Every template is authored on a 512x512 stage, but a short actually needs to target the format its destination requires - vertical 9:16 for YouTube Shorts/TikTok/Reels, which is now the default, plus 1:1, 16:9, and 4:5. Rather than rescale any character art, `build_short.py`'s `fit_scene_to_canvas()` resizes just the background to fill the new canvas and shifts every other layer by the offset that recenters the original 512x512 content within it - so no template file needs touching to support a new shape. Pass `--aspect-ratio` to either `generate_plan.py` (stored in the plan) or `build_short.py` (overrides the plan).
+
+Verified visually at 320x568 (9:16): the background fills edge-to-edge with no mismatched letterboxing, and the character/prop stay centered as a group.
+
+**Known limitation:** a scene's prop icon is positioned relative to the original 512x512 square's corner, now recentered - so on a much taller/wider canvas it sits near the character rather than at the true corner of the full frame.
+
 ## Status
 
-Prompt → AI-generated plan (choosing between 3 templates by narrative role, with narration and props) → multi-scene `.lottie` with embedded audio, amplitude-driven lip sync, and duration-aware scenes, runtime-re-themeable via native Lottie Slots → exportable to a real MP4 with synced audio for channels that can't play `.lottie` directly. Not yet built: a single unsupervised CLI for the video export (the frame-capture step still needs a browser), background music separate from narration, and a second LLM provider (Anthropic) as an alternative to OpenAI.
+Prompt → AI-generated plan (choosing between 3 templates by narrative role, with narration and props, in a chosen aspect ratio - 9:16 by default) → multi-scene `.lottie` with embedded audio, amplitude-driven lip sync, and duration-aware scenes, runtime-re-themeable via native Lottie Slots → exportable to a real MP4 with synced audio for channels that can't play `.lottie` directly. Not yet built: a single unsupervised CLI for the video export (the frame-capture step still needs a browser), background music separate from narration, and a second LLM provider (Anthropic) as an alternative to OpenAI.
 
 ## License
 

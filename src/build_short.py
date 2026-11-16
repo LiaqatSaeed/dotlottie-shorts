@@ -24,6 +24,19 @@ from props import PROPS
 PAD_SECONDS = 0.3  # headroom after narration ends, so it doesn't cut off exactly at the last frame
 PROP_POSITION = [420, 90]  # top-right corner, comp coordinates
 
+# Every template is authored on a 512x512 stage. Rather than rescale the
+# character art for other aspect ratios, these pick a canvas size and pad
+# around the original 512x512 content (recentered), so shorts can target
+# the format that actually matters for distribution - vertical for
+# YouTube Shorts/TikTok/Reels - without touching any template file.
+ASPECT_RATIOS = {
+    "9:16": (512, 910),
+    "16:9": (910, 512),
+    "1:1": (512, 512),
+    "4:5": (512, 640),
+}
+NATIVE_STAGE = 512
+
 # Rough viseme classification from two cheap per-frame signal features:
 # RMS (loudness) and zero-crossing rate (a standard proxy for how
 # high-frequency/noise-like a frame is). Thresholds were picked by
@@ -136,6 +149,39 @@ def embed_lip_sync(scene_data, audio_bytes):
         tr["o"] = {"a": 1, "k": mouth_opacity_keyframes(active_states, name)}
 
 
+def fit_scene_to_canvas(scene_data, canvas_w, canvas_h):
+    """Adapt a 512x512-authored scene to a different output canvas by
+    padding, not rescaling: resize the background to fill the new canvas,
+    and shift every other layer by the same offset that recenters the
+    original 512x512 content within it. A no-op when canvas_w/h are 512."""
+    dx = (canvas_w - NATIVE_STAGE) / 2
+    dy = (canvas_h - NATIVE_STAGE) / 2
+    if dx == 0 and dy == 0:
+        return
+
+    for layer in scene_data["layers"]:
+        is_background = any(
+            shape.get("nm") == "background-group" for shape in layer.get("shapes", [])
+        )
+        if is_background:
+            for shape in layer["shapes"]:
+                for item in shape.get("it", []):
+                    if item.get("nm") == "bg-shape":
+                        item["s"]["k"] = [canvas_w, canvas_h]
+                        item["p"]["k"] = [canvas_w / 2, canvas_h / 2]
+            continue
+
+        pos = layer["ks"]["p"]
+        if pos.get("a") == 1:
+            for kf in pos["k"]:
+                if "s" in kf:
+                    kf["s"][0] += dx
+                    kf["s"][1] += dy
+        else:
+            pos["k"][0] += dx
+            pos["k"][1] += dy
+
+
 def extend_scene_duration(scene_data, new_duration):
     """Stretch a scene's (and every one of its layers') out-point to
     new_duration, assuming all ip/op currently start at 0 - true for every
@@ -237,13 +283,17 @@ def embed_audio(scene_data, audio_bytes, audio_id):
     })
 
 
-def compose(plan):
+def compose(plan, aspect_ratio=None):
     """Wrap each scene's layers as a precomp asset, then place sequential
     precomp layers in the main composition so scenes play one after another."""
+    aspect_ratio = aspect_ratio or plan.get("aspectRatio", "9:16")
+    if aspect_ratio not in ASPECT_RATIOS:
+        raise ValueError(f"Unknown aspect ratio '{aspect_ratio}' - must be one of {list(ASPECT_RATIOS)}")
+    canvas_w, canvas_h = ASPECT_RATIOS[aspect_ratio]
+
     assets = []
     main_layers = []
     cursor = 0
-    canvas_w = canvas_h = None
     fr = None
 
     for i, scene in enumerate(plan["scenes"]):
@@ -262,8 +312,9 @@ def compose(plan):
             embed_lip_sync(scene_data, audio_bytes)
         if scene.get("prop"):
             embed_prop(scene_data, scene["prop"])
-        if canvas_w is None:
-            canvas_w, canvas_h, fr = scene_data["w"], scene_data["h"], scene_data["fr"]
+        fit_scene_to_canvas(scene_data, canvas_w, canvas_h)
+        if fr is None:
+            fr = scene_data["fr"]
         duration = scene_data["op"] - scene_data["ip"]
 
         # scene_data may have picked up extra top-level assets (e.g. the
@@ -333,12 +384,16 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--plan", required=True, help="Path to a plan JSON file")
     parser.add_argument("--out", required=True, help="Output .lottie path")
+    parser.add_argument(
+        "--aspect-ratio", choices=list(ASPECT_RATIOS), default=None,
+        help="Output canvas shape (default: the plan's own 'aspectRatio' field, else 9:16)",
+    )
     args = parser.parse_args()
 
     with open(args.plan) as f:
         plan = json.load(f)
 
-    combined = compose(plan)
+    combined = compose(plan, aspect_ratio=args.aspect_ratio)
     animation_id = plan.get("animationId", "short")
     package_dotlottie(combined, animation_id, args.out)
 

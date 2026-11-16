@@ -26,6 +26,7 @@ MODEL = "gpt-4o-mini"
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from props import PROPS  # noqa: E402
+from build_short import ASPECT_RATIOS  # noqa: E402
 
 PROP_HINTS = {
     "star": "celebration, achievement, a highlight moment",
@@ -168,6 +169,10 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--prompt", required=True)
     parser.add_argument("--out", required=True)
+    parser.add_argument(
+        "--aspect-ratio", choices=list(ASPECT_RATIOS), default="9:16",
+        help="Output canvas shape for the short - 9:16 (default) is what YouTube Shorts/TikTok/Reels actually need",
+    )
     args = parser.parse_args()
 
     available_templates = discover_templates()
@@ -181,6 +186,7 @@ def main():
         raise SystemExit(f"Model did not return valid JSON:\n{raw}")
 
     validate_plan(plan, available_templates)
+    plan["aspectRatio"] = args.aspect_ratio
 
     out_path = Path(args.out)
     out_path.parent.mkdir(parents=True, exist_ok=True)
