@@ -1,0 +1,84 @@
+{
+  "animationId": "penny-welcome",
+  "scenes": [
+    {
+      "label": "welcome",
+      "template": "templates/characters/wave-character.json",
+      "narration": "Welcome to Penny",
+      "params": {
+        "backgroundColor": [
+          0.78,
+          0.93,
+          0.96,
+          1
+        ],
+        "skinColor": [
+          0.83,
+          0.78,
+          0.67,
+          1
+        ],
+        "outfitColor": [
+          0.41,
+          0.59,
+          0.91,
+          1
+        ]
+      }
+    },
+    {
+      "label": "track-expenses",
+      "template": "templates/characters/point-character.json",
+      "narration": "One tap, track expenses",
+      "prop": "star",
+      "params": {
+        "backgroundColor": [
+          0.98,
+          0.99,
+          0.84,
+          1
+        ],
+        "skinColor": [
+          0.81,
+          0.67,
+          0.48,
+          1
+        ],
+        "outfitColor": [
+          0.66,
+          0.63,
+          0.56,
+          1
+        ]
+      }
+    },
+    {
+      "label": "privacy-explanation",
+      "template": "templates/characters/nod-character.json",
+      "narration": "Your data, safe and private",
+      "prop": "map",
+      "params": {
+        "backgroundColor": [
+          0.96,
+          0.98,
+          0.98,
+          1
+        ],
+        "skinColor": [
+          0.82,
+          0.74,
+          0.62,
+          1
+        ],
+        "outfitColor": [
+          0.53,
+          0.69,
+          0.92,
+          1
+        ]
+      }
+    }
+  ],
+  "aspectRatio": "9:16",
+  "voiceEngine": "openai"
+}

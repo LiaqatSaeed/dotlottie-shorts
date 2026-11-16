@@ -172,9 +172,17 @@ Verified on a scene stretched to 341 frames (vs. its 90-frame template default):
 
 **Still open (not done yet):** gaze movement (the eyes don't shift to look anywhere - point-character looking toward its own pointing hand would be the obvious next step) and real pose variety (every template still has exactly one signature gesture; looping it is an improvement over freezing, but it's not new body language).
 
+## Local LLM option (Ollama)
+
+Plan generation doesn't actually need OpenAI specifically - it just needs something that follows instructions and emits valid JSON, and Ollama exposes an OpenAI-compatible `/v1/chat/completions` endpoint, so `generate_plan.py`'s `call_llm()` is one code path with a different base URL/auth per engine, not two implementations. Pass `--llm-engine ollama --llm-model qwen2.5:7b-instruct` (or `llama3.1:8b`, both already usable via `ollama serve`) to run plan generation fully locally, free, no API key.
+
+This is a deliberate, incremental strategy, not a wholesale swap: keep OpenAI where it's still clearly better, and replace each piece with an open-source/local equivalent as that piece proves itself - narration already has this (Kokoro), now planning does too.
+
+**Honest comparison, not just a disclaimer:** ran the same prompt through both. Template selection matched OpenAI's (wave → point → nod, correctly following each template's narrative-role hint) and the plan passed validation on the first try - no hand-holding needed. But narration came out terser ("Welcome to Penny" vs. a fuller sentence) and prop selection was visibly weaker: it picked `map` ("a journey, exploration, finding/going somewhere") for a privacy-explanation scene, a poor semantic fit that OpenAI's runs didn't produce. That's the real, current cost of going local for this piece - not a hypothetical one.
+
 ## Status
 
-Prompt → AI-generated plan (choosing between 3 expressive characters - eyes, eyebrows, blush, legs - by narrative role, with narration (OpenAI or free local Kokoro TTS, 54 voices) and props, in a chosen aspect ratio - 9:16 by default) → multi-scene `.lottie` with embedded audio, amplitude-driven lip sync and blinking, and duration-aware scenes whose gestures loop instead of freezing, runtime-re-themeable via native Lottie Slots → exportable to a real MP4 with synced audio for channels that can't play `.lottie` directly. Not yet built: gaze movement and real pose variety (each template still has one signature gesture), a single unsupervised CLI for the video export (the frame-capture step still needs a browser), background music separate from narration, and a second LLM provider (Anthropic) as an alternative to OpenAI.
+Prompt → AI-generated plan (OpenAI or free local Ollama for planning, OpenAI or free local Kokoro TTS for narration - 3 expressive characters chosen by narrative role, with props, in a chosen aspect ratio - 9:16 by default) → multi-scene `.lottie` with embedded audio, amplitude-driven lip sync and blinking, and duration-aware scenes whose gestures loop instead of freezing, runtime-re-themeable via native Lottie Slots → exportable to a real MP4 with synced audio for channels that can't play `.lottie` directly. Not yet built: gaze movement and real pose variety (each template still has one signature gesture), a single unsupervised CLI for the video export (the frame-capture step still needs a browser), and background music separate from narration.
 
 ## License
 

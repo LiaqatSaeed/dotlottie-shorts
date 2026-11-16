@@ -22,7 +22,15 @@ from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 TEMPLATES_DIR = REPO_ROOT / "templates"
-MODEL = "gpt-4o-mini"
+
+LLM_ENDPOINTS = {
+    "openai": "https://api.openai.com/v1/chat/completions",
+    "ollama": "http://localhost:11434/v1/chat/completions",
+}
+DEFAULT_LLM_MODEL = {
+    "openai": "gpt-4o-mini",
+    "ollama": "qwen2.5:7b-instruct",  # already pulled locally; swap via --llm-model
+}
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from props import PROPS  # noqa: E402
@@ -97,17 +105,25 @@ def load_dotenv_key():
     return None
 
 
-def call_openai(prompt, available_templates):
-    api_key = os.environ.get("OPENAI_API_KEY") or load_dotenv_key()
-    if not api_key:
-        raise SystemExit(
-            "OPENAI_API_KEY is not set. Set it in your own shell first:\n"
-            "  export OPENAI_API_KEY=sk-...\n"
-            "Never pass it as a command-line argument or paste it in chat."
-        )
+def call_llm(prompt, available_templates, engine="openai", model=None):
+    """Both engines speak the same OpenAI-compatible chat-completions
+    format - Ollama exposes that endpoint natively, so this is one code
+    path with a different base URL/auth, not two implementations."""
+    model = model or DEFAULT_LLM_MODEL[engine]
+    headers = {"Content-Type": "application/json"}
+
+    if engine == "openai":
+        api_key = os.environ.get("OPENAI_API_KEY") or load_dotenv_key()
+        if not api_key:
+            raise SystemExit(
+                "OPENAI_API_KEY is not set. Set it in your own shell first:\n"
+                "  export OPENAI_API_KEY=sk-...\n"
+                "Never pass it as a command-line argument or paste it in chat."
+            )
+        headers["Authorization"] = f"Bearer {api_key}"
 
     body = {
-        "model": MODEL,
+        "model": model,
         "response_format": {"type": "json_object"},
         "messages": [
             {"role": "system", "content": build_system_prompt(available_templates)},
@@ -115,19 +131,19 @@ def call_openai(prompt, available_templates):
         ],
     }
     req = urllib.request.Request(
-        "https://api.openai.com/v1/chat/completions",
+        LLM_ENDPOINTS[engine],
         data=json.dumps(body).encode(),
-        headers={
-            "Authorization": f"Bearer {api_key}",
-            "Content-Type": "application/json",
-        },
+        headers=headers,
         method="POST",
     )
     try:
-        with urllib.request.urlopen(req, timeout=60) as resp:
+        with urllib.request.urlopen(req, timeout=120) as resp:
             data = json.load(resp)
     except urllib.error.HTTPError as e:
-        raise SystemExit(f"OpenAI API error {e.code}: {e.read().decode()}")
+        raise SystemExit(f"{engine} API error {e.code}: {e.read().decode()}")
+    except urllib.error.URLError as e:
+        hint = " - is `ollama serve` running?" if engine == "ollama" else ""
+        raise SystemExit(f"Could not reach {engine} at {LLM_ENDPOINTS[engine]}: {e.reason}{hint}")
 
     return data["choices"][0]["message"]["content"]
 
@@ -178,13 +194,18 @@ def main():
         help="TTS engine for build_short.py to use later - 'kokoro' is free/local but needs scripts/setup_kokoro.sh first",
     )
     parser.add_argument("--voice", default=None, help="Voice name for the chosen engine (default: each engine's own default)")
+    parser.add_argument(
+        "--llm-engine", choices=list(LLM_ENDPOINTS), default="openai",
+        help="LLM for plan generation - 'ollama' is free/local but needs `ollama serve` running with a model pulled",
+    )
+    parser.add_argument("--llm-model", default=None, help="Model name for the chosen LLM engine (default: each engine's own default)")
     args = parser.parse_args()
 
     available_templates = discover_templates()
     if not available_templates:
         raise SystemExit("No templates found under templates/ - nothing to plan with.")
 
-    raw = call_openai(args.prompt, available_templates)
+    raw = call_llm(args.prompt, available_templates, engine=args.llm_engine, model=args.llm_model)
     try:
         plan = json.loads(raw)
     except json.JSONDecodeError:
