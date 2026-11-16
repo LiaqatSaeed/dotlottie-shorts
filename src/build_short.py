@@ -146,7 +146,11 @@ def embed_lip_sync(scene_data, audio_bytes):
         return  # template doesn't have all mouth shapes - nothing to sync
 
     for name, tr in transforms.items():
-        tr["o"] = {"a": 1, "k": mouth_opacity_keyframes(active_states, name)}
+        # "sid" lets a host app override this baked animation at runtime via
+        # setScalarSlot(name, 0|100) - e.g. to manually force one mouth
+        # shape on for an interactive editor - the same Lottie Slots
+        # mechanism already proven for runtime color theming.
+        tr["o"] = {"a": 1, "k": mouth_opacity_keyframes(active_states, name), "sid": name}
 
 
 EYE_GROUPS = [
@@ -185,7 +189,11 @@ def embed_blinking(scene_data, scene_index=0):
     for name in EYE_GROUPS:
         tr = find_group_transform(scene_data["layers"], name)
         if tr is not None:
-            tr["s"] = {"a": 1, "k": blink_scale_keyframes(total_frames, phase)}
+            # Same "eyesScale" sid on all 6 eye-part groups, so one
+            # setVectorSlot('eyesScale', [100, 8|100]) call from a host app
+            # overrides every one of them at once - mirrors how one color
+            # sid (e.g. "outfitColor") already targets several shapes.
+            tr["s"] = {"a": 1, "k": blink_scale_keyframes(total_frames, phase), "sid": "eyesScale"}
 
 
 def fit_scene_to_canvas(scene_data, canvas_w, canvas_h):

@@ -1,0 +1,178 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <title>dotlottie-shorts editor</title>
+  <script type="module">
+    import { DotLottie } from "https://cdn.jsdelivr.net/npm/@lottiefiles/dotlottie-web@0.83.2/+esm";
+
+    const params = new URLSearchParams(location.search);
+    const canvas = document.getElementById('anim');
+    let dl = null;
+
+    const COLOR_SLOTS = ['skinColor', 'outfitColor', 'backgroundColor'];
+    const MOUTH_SLOTS = ['mouth-closed', 'mouth-mid', 'mouth-round', 'mouth-wide'];
+
+    function hexToFloatRgba(hex) {
+      const n = parseInt(hex.slice(1), 16);
+      return [((n >> 16) & 255) / 255, ((n >> 8) & 255) / 255, (n & 255) / 255, 1];
+    }
+
+    function load(src) {
+      if (dl) dl.destroy();
+      document.getElementById('status').textContent = 'loading...';
+      dl = new DotLottie({ canvas, src, loop: true, autoplay: true });
+      window.__dl = dl;
+
+      dl.addEventListener('load', () => {
+        document.getElementById('status').textContent = 'loaded';
+        document.getElementById('scrub').max = dl.totalFrames || 1;
+        setAutoMode(true);
+      });
+      dl.addEventListener('frame', (e) => {
+        document.getElementById('scrub').value = e.currentFrame;
+        document.getElementById('frame-label').textContent =
+          `frame ${Math.round(e.currentFrame)} / ${Math.round(dl.totalFrames || 0)}`;
+      });
+      dl.addEventListener('loadError', (e) => {
+        document.getElementById('status').textContent = 'ERROR: ' + (e.error?.message || 'failed to load');
+      });
+    }
+
+    function setAutoMode(isAuto) {
+      document.getElementById('mouth-auto-indicator').textContent = isAuto ? '(auto lip sync)' : '(manual override)';
+      document.getElementById('eyes-auto-indicator').textContent = isAuto ? '(auto blink)' : '(manual override)';
+    }
+
+    // --- playback controls ---
+    document.getElementById('play-pause').onclick = () => {
+      if (!dl) return;
+      if (dl.isPlaying) { dl.pause(); document.getElementById('play-pause').textContent = '▶ Play'; }
+      else { dl.play(); document.getElementById('play-pause').textContent = '⏸ Pause'; }
+    };
+    document.getElementById('scrub').addEventListener('input', (e) => {
+      if (!dl) return;
+      dl.pause();
+      document.getElementById('play-pause').textContent = '▶ Play';
+      dl.setFrame(Number(e.target.value));
+    });
+
+    // --- mouth override ---
+    for (const btn of document.querySelectorAll('[data-mouth]')) {
+      btn.onclick = () => {
+        if (!dl) return;
+        const chosen = btn.dataset.mouth;
+        if (chosen === 'auto') {
+          for (const s of MOUTH_SLOTS) dl.clearSlot(s);
+        } else {
+          for (const s of MOUTH_SLOTS) dl.setScalarSlot(s, s === chosen ? 100 : 0);
+        }
+        setAutoMode(chosen === 'auto' && document.querySelector('[data-eyes].active-auto'));
+        document.getElementById('mouth-auto-indicator').textContent = chosen === 'auto' ? '(auto lip sync)' : '(manual override)';
+      };
+    }
+
+    // --- eyes override ---
+    for (const btn of document.querySelectorAll('[data-eyes]')) {
+      btn.onclick = () => {
+        if (!dl) return;
+        const mode = btn.dataset.eyes;
+        if (mode === 'auto') dl.clearSlot('eyesScale');
+        else if (mode === 'closed') dl.setVectorSlot('eyesScale', [100, 8]);
+        else dl.setVectorSlot('eyesScale', [100, 100]);
+        document.getElementById('eyes-auto-indicator').textContent = mode === 'auto' ? '(auto blink)' : '(manual override)';
+      };
+    }
+
+    // --- color theme override ---
+    for (const slot of COLOR_SLOTS) {
+      document.getElementById(`color-${slot}`).addEventListener('input', (e) => {
+        if (!dl) return;
+        dl.setColorSlot(slot, hexToFloatRgba(e.target.value));
+      });
+    }
+    document.getElementById('reset-colors').onclick = () => {
+      if (!dl) return;
+      for (const s of COLOR_SLOTS) dl.resetSlot(s);
+    };
+
+    // --- loading a file ---
+    document.getElementById('file-input').addEventListener('change', (e) => {
+      const file = e.target.files[0];
+      if (!file) return;
+      load(URL.createObjectURL(file));
+    });
+    document.getElementById('load-url').onclick = () => {
+      const url = document.getElementById('url-input').value.trim();
+      if (url) load(url);
+    };
+
+    const initialSrc = params.get('src') || '../dist/the-explorer.lottie';
+    load(initialSrc);
+  </script>
+  <style>
+    body { background: #1a1a1a; color: #eee; font-family: -apple-system, sans-serif; margin: 0; padding: 24px; display: flex; gap: 32px; flex-wrap: wrap; }
+    h2 { font-size: 14px; text-transform: uppercase; letter-spacing: 0.05em; color: #999; margin: 0 0 10px; }
+    .stage { display: flex; flex-direction: column; align-items: center; gap: 10px; }
+    #anim { width: 320px; height: 568px; background: #fff; border-radius: 8px; box-shadow: 0 8px 30px rgba(0,0,0,0.5); }
+    #scrub { width: 320px; }
+    .controls { display: flex; flex-direction: column; gap: 20px; min-width: 260px; }
+    .panel { background: #262626; border-radius: 10px; padding: 14px 16px; }
+    .panel button { background: #3a3a3a; color: #eee; border: none; border-radius: 6px; padding: 8px 12px; margin: 3px; cursor: pointer; font-size: 13px; }
+    .panel button:hover { background: #484848; }
+    .panel button.active { background: #4a7cff; }
+    .indicator { font-size: 12px; color: #888; margin-left: 6px; }
+    .color-row { display: flex; align-items: center; gap: 8px; margin: 6px 0; }
+    .color-row label { width: 100px; font-size: 13px; }
+    input[type="url"] { width: 220px; padding: 6px; border-radius: 6px; border: 1px solid #444; background: #1a1a1a; color: #eee; }
+    #status { font-size: 12px; color: #888; }
+  </style>
+</head>
+<body>
+  <div class="stage">
+    <h2>Preview</h2>
+    <canvas id="anim" width="512" height="910"></canvas>
+    <div style="display:flex; align-items:center; gap:10px;">
+      <button id="play-pause" class="panel-btn">⏸ Pause</button>
+      <span id="frame-label" style="font-size:12px;color:#888;">frame 0 / 0</span>
+    </div>
+    <input type="range" id="scrub" min="0" value="0" />
+    <span id="status"></span>
+  </div>
+
+  <div class="controls">
+    <div class="panel">
+      <h2>Load a .lottie</h2>
+      <input type="file" id="file-input" accept=".lottie,.json" />
+      <div style="margin-top:8px;">
+        <input type="url" id="url-input" placeholder="or paste a URL" />
+        <button id="load-url">Load</button>
+      </div>
+    </div>
+
+    <div class="panel">
+      <h2>Mouth <span id="mouth-auto-indicator" class="indicator">(auto lip sync)</span></h2>
+      <button data-mouth="mouth-closed">Closed</button>
+      <button data-mouth="mouth-mid">Mid</button>
+      <button data-mouth="mouth-round">Round</button>
+      <button data-mouth="mouth-wide">Wide</button>
+      <button data-mouth="auto">Auto (lip sync)</button>
+    </div>
+
+    <div class="panel">
+      <h2>Eyes <span id="eyes-auto-indicator" class="indicator">(auto blink)</span></h2>
+      <button data-eyes="closed">Closed</button>
+      <button data-eyes="open">Open</button>
+      <button data-eyes="auto">Auto (blink)</button>
+    </div>
+
+    <div class="panel">
+      <h2>Theme (live, no rebuild)</h2>
+      <div class="color-row"><label>Skin</label><input type="color" id="color-skinColor" value="#fad1a6" /></div>
+      <div class="color-row"><label>Outfit</label><input type="color" id="color-outfitColor" value="#339988" /></div>
+      <div class="color-row"><label>Background</label><input type="color" id="color-backgroundColor" value="#f2f4fa" /></div>
+      <button id="reset-colors">Reset to original</button>
+    </div>
+  </div>
+</body>
+</html>
