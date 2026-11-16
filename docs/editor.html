@@ -96,6 +96,32 @@
       for (const s of COLOR_SLOTS) dl.resetSlot(s);
     };
 
+    // --- type a phrase, make it speak ---
+    document.getElementById('speak-btn').onclick = async () => {
+      const text = document.getElementById('speak-text').value.trim();
+      if (!text) return;
+      const template = document.getElementById('speak-template').value;
+      const btn = document.getElementById('speak-btn');
+      btn.disabled = true;
+      btn.textContent = 'Synthesizing...';
+      document.getElementById('speak-status').textContent = '';
+      try {
+        const resp = await fetch('/speak', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ text, template, voiceEngine: 'kokoro' }),
+        });
+        if (!resp.ok) throw new Error(await resp.text());
+        const blob = await resp.blob();
+        load(URL.createObjectURL(blob));
+      } catch (e) {
+        document.getElementById('speak-status').textContent = 'ERROR: ' + e.message;
+      } finally {
+        btn.disabled = false;
+        btn.textContent = '🗣 Speak';
+      }
+    };
+
     // --- loading a file ---
     document.getElementById('file-input').addEventListener('change', (e) => {
       const file = e.target.files[0];
@@ -141,6 +167,22 @@
   </div>
 
   <div class="controls">
+    <div class="panel">
+      <h2>Type a phrase, make it speak</h2>
+      <select id="speak-template">
+        <option value="wave">Wave character</option>
+        <option value="nod">Nod character</option>
+        <option value="point">Point character</option>
+        <option value="your-character">Your uploaded character</option>
+      </select>
+      <div style="margin-top:8px;">
+        <textarea id="speak-text" rows="2" style="width:220px; border-radius:6px; background:#1a1a1a; color:#eee; border:1px solid #444;" placeholder="Type something..."></textarea>
+      </div>
+      <button id="speak-btn" style="margin-top:6px;">🗣 Speak</button>
+      <div id="speak-status" style="font-size:12px; color:#f88; margin-top:4px;"></div>
+      <div style="font-size:11px; color:#777; margin-top:6px;">Needs the server started as "dotlottie-export" (port 8744) - synthesizes with the free local Kokoro voice.</div>
+    </div>
+
     <div class="panel">
       <h2>Load a .lottie</h2>
       <input type="file" id="file-input" accept=".lottie,.json" />

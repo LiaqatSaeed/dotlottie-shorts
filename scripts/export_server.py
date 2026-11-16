@@ -6,13 +6,28 @@ Used by docs/export.html to hand back a recorded video/audio blob without
 needing filesystem downloads (which are OS-sandboxed in this environment).
 """
 import http.server
+import json
 import socketserver
 import sys
+import tempfile
+import traceback
 import urllib.parse
 from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 DIST_DIR = REPO_ROOT / "dist"
+
+sys.path.insert(0, str(REPO_ROOT / "src"))
+
+# Small catalog so the browser can say "wave" instead of a repo-relative
+# path - add an entry here for any character you want the /speak endpoint
+# to offer, including ones adapted from third-party .lottie files.
+SPEAK_TEMPLATES = {
+    "wave": "templates/characters/wave-character.json",
+    "nod": "templates/characters/nod-character.json",
+    "point": "templates/characters/point-character.json",
+    "your-character": "external-refs/character-speaking.json",
+}
 
 
 class Handler(http.server.SimpleHTTPRequestHandler):
@@ -21,6 +36,9 @@ class Handler(http.server.SimpleHTTPRequestHandler):
 
     def do_POST(self):
         parsed = urllib.parse.urlparse(self.path)
+        if parsed.path == "/speak":
+            self.handle_speak()
+            return
         if parsed.path != "/save":
             self.send_response(404)
             self.end_headers()
@@ -45,6 +63,51 @@ class Handler(http.server.SimpleHTTPRequestHandler):
         self.send_header("Access-Control-Allow-Origin", "*")
         self.end_headers()
         self.wfile.write(f"saved {len(body)} bytes to {out_path}".encode())
+
+    def handle_speak(self):
+        """POST /speak with a JSON body {text, template, voiceEngine?, voice?}
+        composes a fresh one-scene .lottie on the spot and returns its bytes -
+        the live "type a phrase, character speaks it" feature."""
+        length = int(self.headers.get("Content-Length", 0))
+        try:
+            body = json.loads(self.rfile.read(length))
+            text = body["text"].strip()
+            template_key = body.get("template", "wave")
+            if not text:
+                raise ValueError("empty text")
+            if template_key not in SPEAK_TEMPLATES:
+                raise ValueError(f"unknown template '{template_key}' - must be one of {list(SPEAK_TEMPLATES)}")
+
+            from build_short import compose, package_dotlottie  # local import: only needed for this endpoint
+
+            plan = {
+                "animationId": "speak",
+                "aspectRatio": body.get("aspectRatio", "1:1"),
+                "scenes": [{
+                    "label": "speak",
+                    "template": SPEAK_TEMPLATES[template_key],
+                    "narration": text,
+                }],
+            }
+            combined = compose(
+                plan,
+                voice_engine=body.get("voiceEngine", "kokoro"),
+                voice=body.get("voice"),
+            )
+            with tempfile.NamedTemporaryFile(suffix=".lottie") as tmp:
+                package_dotlottie(combined, "speak", tmp.name)
+                lottie_bytes = Path(tmp.name).read_bytes()
+
+            self.send_response(200)
+            self.send_header("Content-Type", "application/zip")
+            self.end_headers()
+            self.wfile.write(lottie_bytes)
+        except Exception as e:
+            traceback.print_exc()
+            self.send_response(500)
+            self.send_header("Content-Type", "text/plain")
+            self.end_headers()
+            self.wfile.write(str(e).encode())
 
     def do_OPTIONS(self):
         self.send_response(200)

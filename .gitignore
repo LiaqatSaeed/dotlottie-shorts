@@ -8,3 +8,4 @@ build/
 .cache/
 external-refs/
 .venv/
+__pycache__/
