@@ -16,6 +16,14 @@ This project narrows the problem to something actually buildable today: instead 
 - Output format: [dotLottie](https://dotlottie.io/) (`.lottie`) with embedded audio, playable via [dotlottie-web](https://github.com/LottieFiles/dotlottie-web)
 - Optional export: render to MP4 (frames + ffmpeg audio mux) for platforms that don't support Lottie playback
 
+## Running it
+
+```bash
+./scripts/start.sh
+```
+
+Starts the static file server (port 8743) and the export/speak server (port 8744, used by the editor's "type a phrase" field), then opens [docs/editor.html](docs/editor.html) in your browser. Ctrl+C stops both. Requires the project's own virtualenv (`.venv`) to already have `kokoro-onnx` installed - see `scripts/setup_kokoro.sh`.
+
 ## Non-goals (for now)
 
 - Freeform character animation, lip-sync, or narrative storytelling beyond the explainer template set
