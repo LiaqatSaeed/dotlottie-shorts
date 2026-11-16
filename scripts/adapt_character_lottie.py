@@ -79,14 +79,29 @@ def _shape_local_width(shape):
     return None
 
 
-def find_mouth_layer(layers):
-    """Scan every layer for one whose shapes contain an existing mouth by
-    find_old_mouth_index's stroke-vs-fill heuristic, and return that layer
-    plus the mouth group's own local position/size - read directly from
-    the data rather than guessed, so no manual --mouth-pos/--mouth-scale
-    tuning is needed for a new character. Returns None if no layer looks
-    like it has an identifiable mouth (caller should fall back to asking
-    for manual parameters instead of guessing blindly)."""
+def iter_layer_containers(data):
+    """Yield (container_id, layers_list) for the main composition
+    (container_id=None) and every precomp asset's own layers (container_id=
+    that asset's id) - a character's face often lives inside a nested
+    precomp (e.g. a "Head" layer that's really a reference to a sub-
+    composition), not in the top-level layer list, and Lottie's asset list
+    is flat regardless of how deeply nested the precomp references are, so
+    one pass over it already reaches every nesting depth."""
+    yield None, data["layers"]
+    for asset in data.get("assets", []):
+        if "layers" in asset:
+            yield asset["id"], asset["layers"]
+
+
+def find_mouth_layer(data):
+    """Scan every layer, in every composition (main + nested precomps),
+    for one whose shapes contain an existing mouth by find_old_mouth_index's
+    stroke-vs-fill heuristic, and return where it lives plus the mouth
+    group's own local position/size - read directly from the data rather
+    than guessed, so no manual --mouth-pos/--mouth-scale tuning is needed
+    for a new character. Returns None if no layer looks like it has an
+    identifiable swappable mouth (caller should fall back to a different
+    detection strategy, or to manual parameters, rather than guess blindly)."""
     # The stroke-vs-fill heuristic alone isn't unique to a head/face layer -
     # a limb can have a single stroke-painted outline group too. Check
     # layers whose name suggests a head/face first, and only fall back to
@@ -94,29 +109,65 @@ def find_mouth_layer(layers):
     def head_first(layer):
         return 0 if re.search(r"head|face", layer.get("nm", ""), re.IGNORECASE) else 1
 
-    for layer in sorted(layers, key=head_first):
-        shapes = layer.get("shapes")
-        if not shapes:
-            continue
-        idx = find_old_mouth_index(shapes)
-        if idx is None:
-            continue
-        old = shapes[idx]
-        tr = next((it for it in old["it"] if it["ty"] == "tr"), None)
-        if tr is None or tr["p"].get("a") != 0:
-            continue  # animated or malformed transform - not safe to read a single position from
-        pos = tr["p"]["k"]
-        width = _shape_local_width(old)
-        scale = (width / MOUTH_SHAPES["mouth-closed"]["size"][0]) if width else 0.35
-        return layer["nm"], pos, scale
+    for container_id, layers in iter_layer_containers(data):
+        for layer in sorted(layers, key=head_first):
+            shapes = layer.get("shapes")
+            if not shapes:
+                continue
+            idx = find_old_mouth_index(shapes)
+            if idx is None:
+                continue
+            old = shapes[idx]
+            tr = next((it for it in old["it"] if it["ty"] == "tr"), None)
+            if tr is None or tr["p"].get("a") != 0:
+                continue  # animated or malformed transform - not safe to read a single position from
+            pos = tr["p"]["k"]
+            width = _shape_local_width(old)
+            scale = (width / MOUTH_SHAPES["mouth-closed"]["size"][0]) if width else 0.35
+            return container_id, layer["nm"], pos, scale
     return None
 
 
-def adapt(data, mouth_layer_name, mouth_pos, mouth_scale, canvas_bg_color=(0.95, 0.96, 0.98, 1)):
+def describe_unadaptable_reason(data):
+    """adapt()/auto_adapt() only know how to drive one rig convention: a
+    single swappable mouth shape (find_mouth_layer above). When that's not
+    found, give a specific reason instead of a generic failure, by
+    recognizing other known-but-unsupported patterns we've actually seen in
+    the wild, so the caller/user knows *why*, not just that it didn't work."""
+    has_any_shapes = any(
+        layer.get("shapes") for _, layers in iter_layer_containers(data) for layer in layers
+    )
+    if not has_any_shapes:
+        return ("this character has no vector shapes at all (every layer is an image, ty=2) - "
+                "it's a raster/frame-by-frame animation, not a vector rig, so shape-based mouth "
+                "insertion can't apply to it regardless of layer names")
+
+    beak_like = re.compile(r"beak|jaw|mouth|bill|lip", re.IGNORECASE)
+    for _, layers in iter_layer_containers(data):
+        for layer in layers:
+            if not beak_like.search(layer.get("nm", "")):
+                continue
+            scale = layer.get("ks", {}).get("s")
+            if isinstance(scale, dict) and scale.get("a") == 1 and len(scale.get("k", [])) >= 2:
+                return (f"found a layer named '{layer['nm']}' that looks mouth-related and has its "
+                        "own scale animation (a continuous open/close mechanism, likely matte-driven) "
+                        "rather than a swappable discrete mouth shape - this rig convention isn't "
+                        "automated yet, only the shape-swap convention is")
+    return ("couldn't automatically find an existing mouth shape on this character "
+            "(looked for a stroke-painted shape among otherwise fill-painted shapes "
+            "on each layer, including inside nested precomps) - adapt it manually "
+            "with adapt_character_lottie.py instead")
+
+
+def adapt(data, mouth_layer_name, mouth_pos, mouth_scale, canvas_bg_color=(0.95, 0.96, 0.98, 1), mouth_container_id=None):
     data = copy.deepcopy(data)
     native_w, native_h = data["w"], data["h"]
 
-    head_layer = next(l for l in data["layers"] if l["nm"] == mouth_layer_name)
+    if mouth_container_id is None:
+        target_layers = data["layers"]
+    else:
+        target_layers = next(a for a in data["assets"] if a["id"] == mouth_container_id)["layers"]
+    head_layer = next(l for l in target_layers if l["nm"] == mouth_layer_name)
     old_idx = find_old_mouth_index(head_layer["shapes"])
     if old_idx is not None:
         del head_layer["shapes"][old_idx]
@@ -174,19 +225,18 @@ def auto_adapt(data, canvas_bg_color=(0.95, 0.96, 0.98, 1)):
     """adapt() with mouth-layer/position/scale derived automatically from
     the character's own existing mouth shape instead of requiring them as
     manual CLI arguments - what the live editor's Speak panel uses for an
-    arbitrary uploaded character. Raises ValueError if no layer has a
-    shape this heuristic recognizes as a mouth (stroke-painted, among
-    otherwise fill-painted shapes) - callers should surface that rather
-    than guess a placement with no basis in the actual artwork."""
-    found = find_mouth_layer(data["layers"])
+    arbitrary uploaded character. Tries known rig conventions (currently:
+    a single swappable mouth shape, searched through nested precomps too)
+    and raises ValueError with a specific reason - distinguishing "no
+    vector shapes at all", "found a mouth-like part but it's a different,
+    not-yet-supported rig convention", and "nothing recognizable at all" -
+    rather than silently guessing a placement with no basis in the
+    artwork, or lumping every failure into one generic message."""
+    found = find_mouth_layer(data)
     if found is None:
-        raise ValueError(
-            "couldn't automatically find an existing mouth shape on this character "
-            "(looked for a stroke-painted shape among otherwise fill-painted shapes "
-            "on each layer) - adapt it manually with adapt_character_lottie.py instead"
-        )
-    mouth_layer_name, mouth_pos, mouth_scale = found
-    return adapt(data, mouth_layer_name, mouth_pos, mouth_scale, canvas_bg_color)
+        raise ValueError(describe_unadaptable_reason(data))
+    mouth_container_id, mouth_layer_name, mouth_pos, mouth_scale = found
+    return adapt(data, mouth_layer_name, mouth_pos, mouth_scale, canvas_bg_color, mouth_container_id=mouth_container_id)
 
 
 if __name__ == "__main__":
