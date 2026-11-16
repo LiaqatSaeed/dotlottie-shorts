@@ -1,0 +1,41 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <title>runtime slots test</title>
+  <script type="module">
+    import { DotLottie } from "https://cdn.jsdelivr.net/npm/@lottiefiles/dotlottie-web@0.83.2/+esm";
+    window.addEventListener('DOMContentLoaded', () => {
+      const canvas = document.getElementById('anim');
+      const dl = new DotLottie({
+        canvas,
+        src: '../dist/wave-character-slotted.lottie',
+        loop: true,
+        autoplay: true,
+      });
+      window.__dl = dl;
+
+      document.getElementById('red').onclick = () => dl.setColorSlot('outfitColor', [0.8, 0.15, 0.15, 1]);
+      document.getElementById('purple').onclick = () => dl.setColorSlot('outfitColor', [0.5, 0.2, 0.7, 1]);
+      document.getElementById('skin-dark').onclick = () => dl.setColorSlot('skinColor', [0.55, 0.38, 0.25, 1]);
+      document.getElementById('bg-dark').onclick = () => dl.setColorSlot('backgroundColor', [0.1, 0.1, 0.15, 1]);
+      document.getElementById('reset').onclick = () => dl.resetSlots();
+    });
+  </script>
+  <style>
+    body { background: #222; display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100vh; margin: 0; gap: 16px; font-family: sans-serif; }
+    #anim { width: 400px; height: 400px; background: #fff; }
+    button { padding: 8px 14px; margin: 4px; cursor: pointer; }
+  </style>
+</head>
+<body>
+  <canvas id="anim" width="400" height="400"></canvas>
+  <div>
+    <button id="red">Outfit: red</button>
+    <button id="purple">Outfit: purple</button>
+    <button id="skin-dark">Skin: darker</button>
+    <button id="bg-dark">Background: dark</button>
+    <button id="reset">Reset all</button>
+  </div>
+</body>
+</html>

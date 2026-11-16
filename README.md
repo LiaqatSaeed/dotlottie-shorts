@@ -130,9 +130,17 @@ Verified end to end on "The Explorer": 360 PNG frames captured and spot-checked 
 
 **Known limitations:** the frame-capture step needs a browser to drive it (`docs/export-frames.html`), not a single unsupervised CLI command yet; a 360-frame short takes on the order of 10-15s of real wall-clock time to capture (roughly one render per `requestAnimationFrame` pair, plus a network round-trip per frame).
 
+## Runtime theming (Lottie Slots)
+
+Every template's `character-skin-fill`, `character-outfit-fill`, and `bg-fill` color properties now carry a `"sid"` (slot ID: `skinColor`/`outfitColor`/`backgroundColor`) - the native Lottie mechanism for marking a property as runtime-overridable, independent of our own Python color-param system. This means a single exported `.lottie` can be re-colored by *any* downstream consumer - a website, an app, a buyer who licenses the character - entirely at runtime via the player's API, with zero regeneration through this pipeline. That's the point of staying Lottie-native rather than converting everything to video: the deliverable itself stays editable after the fact.
+
+Verified in-browser (`docs/preview-slots.html`) on a single unmodified `wave-character.lottie`: clicking buttons called `dl.setColorSlot('outfitColor', [...])` live, and both the body and legs (which share that slot) recolored together while the shoes (an unslotted, fixed color) correctly stayed put - confirmed for all three slots (outfit, skin, background) simultaneously on one loaded instance, no rebuild.
+
+**Relationship to the build-time color params:** these are two independent mechanisms that happen to target the same properties. The Python pipeline (`build_short.py`) still bakes in colors at compose time per scene, driven by the AI-generated plan - that's unchanged and is how this project actually varies colors scene-to-scene today. The slot IDs are an *additional* capability layered on top, for a downstream consumer to further re-theme an already-built `.lottie` without going through this pipeline at all.
+
 ## Status
 
-Prompt → AI-generated plan (choosing between 3 templates by narrative role, with narration and props) → multi-scene `.lottie` with embedded audio, amplitude-driven lip sync, and duration-aware scenes → exportable to a real MP4 with synced audio. Not yet built: a single unsupervised CLI for the video export (the frame-capture step still needs a browser), background music separate from narration, and a second LLM provider (Anthropic) as an alternative to OpenAI.
+Prompt → AI-generated plan (choosing between 3 templates by narrative role, with narration and props) → multi-scene `.lottie` with embedded audio, amplitude-driven lip sync, and duration-aware scenes, runtime-re-themeable via native Lottie Slots → exportable to a real MP4 with synced audio for channels that can't play `.lottie` directly. Not yet built: a single unsupervised CLI for the video export (the frame-capture step still needs a browser), background music separate from narration, and a second LLM provider (Anthropic) as an alternative to OpenAI.
 
 ## License
 
