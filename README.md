@@ -188,9 +188,15 @@ The overrides reuse the exact Lottie Slots mechanism already proven for runtime 
 
 Also confirmed outside this project's own tooling: a `.lottie` built by this pipeline was uploaded to the LottieFiles workspace and played with working audio there too - real third-party validation of the audio-embedding approach, not just this project's own player.
 
+## Gaze movement
+
+Eyes blinked but never looked anywhere until now. `embed_gaze()` keys each pupil/highlight's position to glance away from center and back periodically (same crisp hold-then-snap technique as blinking, since real saccades are near-instant snaps followed by a hold, not an eased glide) - a `"gazeOffset"` sid, same pattern as the mouth/blink slots, so a host page could expose this as a live override too later.
+
+The part worth calling out: this isn't just idle wandering for every template. `point-character` is biased to look toward its own raised/pointing arm instead of wandering randomly - the one place in this project so far where eye movement and body language are made to agree with each other on purpose, rather than animated independently. Verified both behaviors directly from the generated keyframes and in-browser: point-character's pupils shift toward its pointing side (matching its own arm's direction) while wave-character's idle wander starts the opposite way (left first) - genuinely different per-template behavior, not the same animation reused.
+
 ## Status
 
-Prompt → AI-generated plan (OpenAI or free local Ollama for planning, OpenAI or free local Kokoro TTS for narration - 3 expressive characters chosen by narrative role, with props, in a chosen aspect ratio - 9:16 by default) → multi-scene `.lottie` with embedded audio, amplitude-driven lip sync and blinking, and duration-aware scenes whose gestures loop instead of freezing → openable in an interactive editor with playback controls and live mouth/eyes/color overrides (all via native Lottie Slots) → exportable to a real MP4 with synced audio for channels that can't play `.lottie` directly. Not yet built: gaze movement and real pose variety (each template still has one signature gesture), a single unsupervised CLI for the video export (the frame-capture step still needs a browser), and background music separate from narration.
+Prompt → AI-generated plan (OpenAI or free local Ollama for planning, OpenAI or free local Kokoro TTS for narration - 3 expressive characters chosen by narrative role, with props, in a chosen aspect ratio - 9:16 by default) → multi-scene `.lottie` with embedded audio, amplitude-driven lip sync, blinking, and gaze (biased toward its own gesture for point-character), and duration-aware scenes whose gestures loop instead of freezing → openable in an interactive editor with playback controls and live mouth/eyes/color overrides (all via native Lottie Slots) → exportable to a real MP4 with synced audio for channels that can't play `.lottie` directly. Not yet built: real pose variety (each template still has one signature gesture - gaze now agrees with it, but it's still only one gesture), a single unsupervised CLI for the video export (the frame-capture step still needs a browser), and background music separate from narration.
 
 ## License
 

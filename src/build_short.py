@@ -178,6 +178,51 @@ def blink_scale_keyframes(total_frames, phase):
     return keyframes
 
 
+GAZE_PARTS = [f"eye-{side}-{part}" for side in ("left", "right") for part in ("pupil", "highlight")]
+GAZE_OFFSET = 5  # px - pupils are 13px wide inside a 26px sclera, so this stays well inside it
+GAZE_INTERVAL = 130  # frames between gaze shifts (~4.3s at 30fps)
+
+# Gaze direction bias per template: wave/nod wander center<->left<->right
+# idly; point-character mostly looks toward its own raised/pointing arm
+# (positive x - see point-character.json's "pointing-arm" layer, which is
+# anchored on the character's right side) rather than wandering randomly -
+# body language the eyes should actually agree with, not ignore.
+GAZE_BIAS = {"point-character": "right"}
+
+
+def gaze_offset_keyframes(total_frames, phase, bias=None):
+    """Hold-style keyframes for one eye-part's x position offset - real
+    saccades are near-instant snaps followed by a hold, so this uses the
+    same crisp on/off technique as blinking, not an eased glide."""
+    sequence = [-GAZE_OFFSET, 0, GAZE_OFFSET, 0] if bias is None else (
+        [GAZE_OFFSET, GAZE_OFFSET, 0, GAZE_OFFSET] if bias == "right" else
+        [-GAZE_OFFSET, -GAZE_OFFSET, 0, -GAZE_OFFSET]
+    )
+    keyframes = [{"t": 0, "s": [0, 0], "h": 1}]
+    t = phase
+    i = 0
+    while t < total_frames:
+        keyframes.append({"t": t, "s": [sequence[i % len(sequence)], 0], "h": 1})
+        t += GAZE_INTERVAL
+        i += 1
+    keyframes.append({"t": total_frames, "s": keyframes[-1]["s"]})
+    return keyframes
+
+
+def embed_gaze(scene_data, scene_index=0):
+    """Key each pupil/highlight's position to glance left/right/center
+    periodically, so eyes actually look somewhere instead of staring dead
+    ahead - biased toward the character's own gesture for templates where
+    that means something (point-character looks where it's pointing)."""
+    total_frames = scene_data["op"] - scene_data["ip"]
+    bias = GAZE_BIAS.get(scene_data.get("nm"))
+    phase = 35 + (scene_index * 13) % 20
+    for name in GAZE_PARTS:
+        tr = find_group_transform(scene_data["layers"], name)
+        if tr is not None:
+            tr["p"] = {"a": 1, "k": gaze_offset_keyframes(total_frames, phase, bias), "sid": "gazeOffset"}
+
+
 def embed_blinking(scene_data, scene_index=0):
     """Key every eye-part's vertical scale to blink periodically for the
     scene's full duration, so eyes aren't just static dots."""
@@ -415,6 +460,7 @@ def compose(plan, aspect_ratio=None, voice_engine=None, voice=None):
             embed_prop(scene_data, scene["prop"])
         loop_body_motion(scene_data, template_duration, scene_data["op"] - scene_data["ip"])
         embed_blinking(scene_data, scene_index=i)
+        embed_gaze(scene_data, scene_index=i)
         fit_scene_to_canvas(scene_data, canvas_w, canvas_h)
         if fr is None:
             fr = scene_data["fr"]
