@@ -341,23 +341,36 @@ def tile_keyframes(keyframes, period, total_frames):
 # freezing - gives a line reading longer than one gesture cycle some
 # continued body language instead of the character going rigid partway
 # through. Maps layer name -> which ks property to tile.
-LOOPING_GESTURES = {
-    "right-arm": "r",
-    "pointing-arm": "r",
-    "character-body-head": "p",
-}
+LOOPABLE_KS_PROPS = ("p", "r", "s", "a", "o", "rx", "ry", "rz")
+LOOP_DETECTION_TOLERANCE = 2  # frames - AE exports often end a cycle's last keyframe at period-1, not period
+
+
+def is_full_cycle_animation(prop, period):
+    """True if an animated ks property's keyframes span essentially the
+    whole original template duration (starts near 0, ends near `period`) -
+    i.e. it's a repeating motion (a walk cycle, an arm swing, a head-bob),
+    not some other animated property with a different, shorter timespan."""
+    if not isinstance(prop, dict) or prop.get("a") != 1 or len(prop.get("k", [])) < 2:
+        return False
+    first_t, last_t = prop["k"][0].get("t", 0), prop["k"][-1].get("t", 0)
+    return first_t <= LOOP_DETECTION_TOLERANCE and last_t >= period - LOOP_DETECTION_TOLERANCE
 
 
 def loop_body_motion(scene_data, period, total_frames):
+    """Repeat every full-cycle animated transform property across a
+    scene's extended duration instead of letting it freeze after one
+    cycle - detected generically (any ks property whose keyframes span the
+    original template length), not by a hardcoded list of our own
+    templates' layer/property names, so this also works on a third-party
+    character adapted by adapt_character_lottie.py whose rig we don't
+    control and whose animated properties we don't know in advance."""
     if total_frames <= period:
         return
     for layer in scene_data["layers"]:
-        prop_key = LOOPING_GESTURES.get(layer.get("nm"))
-        if not prop_key:
-            continue
-        prop = layer["ks"].get(prop_key)
-        if prop and prop.get("a") == 1:
-            prop["k"] = tile_keyframes(prop["k"], period, total_frames)
+        for prop_key in LOOPABLE_KS_PROPS:
+            prop = layer["ks"].get(prop_key)
+            if is_full_cycle_animation(prop, period):
+                prop["k"] = tile_keyframes(prop["k"], period, total_frames)
 
 
 def embed_prop(scene_data, prop_name, position=PROP_POSITION):
