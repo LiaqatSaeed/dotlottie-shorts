@@ -22,7 +22,9 @@ This project narrows the problem to something actually buildable today: instead 
 ./scripts/start.sh
 ```
 
-Starts the static file server (port 8743) and the export/speak server (port 8744, used by the editor's "type a phrase" field), then opens [docs/editor.html](docs/editor.html) in your browser. Ctrl+C stops both. Requires the project's own virtualenv (`.venv`) to already have `kokoro-onnx` installed - see `scripts/setup_kokoro.sh`.
+Starts the export server (port 8744) and opens [docs/editor.html](docs/editor.html) in your browser. Ctrl+C stops it. Requires the project's own virtualenv (`.venv`) to already have `kokoro-onnx` installed - see `scripts/setup_kokoro.sh`.
+
+The editor must be loaded from this same server, not a separate static file server - `export_server.py` serves static files *and* the `POST /speak` endpoint the "type a phrase" field calls (a relative `fetch('/speak')`), so loading the page from a different origin gets a 501 from whatever's serving it instead of reaching `/speak` at all.
 
 ## Non-goals (for now)
 
