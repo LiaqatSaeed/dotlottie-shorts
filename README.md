@@ -116,9 +116,23 @@ The AI plan generator now offers these to the model with a one-line hint each (e
 
 Caught and fixed two real bugs while building this: the map's stroke-based line/X-mark silently failed to render (no console error) - this player's ThorVG build appears not to support `"st"` stroke shape items, so they were rebuilt as thin rotated filled rectangles instead; and the same front-to-back group-ordering mistake as before (the opaque paper background was listed first/frontmost, hiding the decorative lines behind it).
 
+## Video export (MP4)
+
+Since a `.lottie` only plays in a Lottie-aware player, distributing it anywhere else (YouTube, Slack, a plain `<video>` tag) means rendering it to a real video file. The approach that actually works:
+
+1. `docs/export-frames.html?src=<lottie>&frames=<N>&prefix=<name>` - loads the composed `.lottie`, explicitly calls `setFrame(i)` for every frame (not continuous autoplay - see why below), waits two `requestAnimationFrame`s for the paint to land, captures the canvas via `toBlob()`, and `POST`s each frame as a PNG to `scripts/export_server.py`'s `/save` endpoint (a tiny custom static-file server with one extra endpoint, since filesystem downloads are OS-sandboxed in this environment).
+2. `scripts/extract_audio_track.py` pulls every scene's embedded narration straight out of the composed `.lottie`'s own assets (no re-synthesis) and mixes them into one audio track at their correct start times with ffmpeg's `adelay`+`amix`.
+3. `scripts/assemble_video.py` encodes the PNG sequence into a video with ffmpeg, then muxes in that audio track (deliberately without `-shortest`, since narration is usually shorter than its scene and the silence after it ends is correct - using `-shortest` would wrongly cut the video short to match the audio).
+
+**Why frame-by-frame instead of just recording playback in real time (the obvious approach):** that was the first attempt - `canvas.captureStream()` + `MediaRecorder`, with scene audio captured by routing each narration `<audio>` element through a `MediaStreamAudioDestinationNode`. It produced an empty or near-empty file every time, in both the embedded preview pane and real Chrome. A plain `requestAnimationFrame`-driven canvas (no dotLottie involved) recorded perfectly in the same environment, which rules out `captureStream`/`MediaRecorder` support generally and points at something specific to how this player paints the canvas during continuous autoplay in an automated context - possibly the "freeze on offscreen" behavior the dotlottie-web README documents misfiring. Rather than chase that further, the pipeline switched to explicit per-frame `setFrame()` calls, which sidestep continuous playback entirely and are the same mechanism already proven reliable throughout this whole project (every lip-sync/template/prop check in this README was verified by scrubbing to exact frames).
+
+Verified end to end on "The Explorer": 360 PNG frames captured and spot-checked against known-good frames from earlier manual verification (pixel-identical), assembled into a 12.000s H.264 video, muxed with a real AAC audio track extracted from the same file, confirmed via `ffprobe` to have both streams and real encoded audio packets throughout.
+
+**Known limitations:** the frame-capture step needs a browser to drive it (`docs/export-frames.html`), not a single unsupervised CLI command yet; a 360-frame short takes on the order of 10-15s of real wall-clock time to capture (roughly one render per `requestAnimationFrame` pair, plus a network round-trip per frame).
+
 ## Status
 
-Prompt → AI-generated plan (choosing between 3 templates by narrative role, with narration) → multi-scene `.lottie` with embedded audio, amplitude-driven lip sync, and duration-aware scenes works end-to-end, verified in-browser (pose/motion/mouth-shape/colors, held final pose through an extended tail) and functionally (actual audio `.play()` calls, correct per-template selection across all 3, correctly stretched/un-stretched durations). Not yet built: background music separate from narration, and a second LLM provider (Anthropic) as an alternative to OpenAI.
+Prompt → AI-generated plan (choosing between 3 templates by narrative role, with narration and props) → multi-scene `.lottie` with embedded audio, amplitude-driven lip sync, and duration-aware scenes → exportable to a real MP4 with synced audio. Not yet built: a single unsupervised CLI for the video export (the frame-capture step still needs a browser), background music separate from narration, and a second LLM provider (Anthropic) as an alternative to OpenAI.
 
 ## License
 

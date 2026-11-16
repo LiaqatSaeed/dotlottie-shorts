@@ -1,0 +1,53 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <title>frame exporter</title>
+  <style>body { background: #222; color: #fff; font-family: sans-serif; }</style>
+</head>
+<body>
+  <canvas id="anim" width="512" height="512" style="background:#fff"></canvas>
+  <div id="log">loading...</div>
+  <script type="module">
+    import { DotLottie } from "https://cdn.jsdelivr.net/npm/@lottiefiles/dotlottie-web@0.83.2/+esm";
+
+    const params = new URLSearchParams(location.search);
+    const src = params.get('src');
+    const prefix = params.get('prefix') || 'frame';
+    const totalFrames = parseInt(params.get('frames'), 10);
+    const log = (msg) => { document.getElementById('log').textContent = msg; };
+
+    function frameToBlob(canvas) {
+      return new Promise((resolve) => canvas.toBlob(resolve, 'image/png'));
+    }
+
+    async function run() {
+      const canvas = document.getElementById('anim');
+      const dl = new DotLottie({ canvas, src, loop: false, autoplay: false });
+
+      await new Promise((resolve) => {
+        dl.addEventListener('load', resolve);
+        dl.addEventListener('ready', resolve);
+        setTimeout(resolve, 3000);
+      });
+
+      dl.pause();
+
+      for (let i = 0; i < totalFrames; i++) {
+        dl.setFrame(i);
+        // let the renderer actually paint this frame before capturing it
+        await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+        const blob = await frameToBlob(canvas);
+        const name = `${prefix}_${String(i).padStart(5, '0')}.png`;
+        await fetch(`/save?name=${encodeURIComponent(name)}`, { method: 'POST', body: blob });
+        if (i % 20 === 0) log(`frame ${i}/${totalFrames}`);
+      }
+
+      log(`DONE: ${totalFrames} frames uploaded with prefix "${prefix}"`);
+      window.__exportDone = true;
+    }
+
+    run().catch((e) => { log('ERROR: ' + e.message); window.__exportDone = true; window.__exportError = e.message; });
+  </script>
+</body>
+</html>
