@@ -152,9 +152,17 @@ All three templates now have eyes (white sclera + dark pupil + a tiny highlight 
 
 Hit the exact same front-to-back ordering mistake as every previous shape addition in this project, twice in one go: sclera was listed before pupil/highlight (hiding them completely), and separately the eyebrows were initially too close to the hairline and the same color, making them blend into it rather than actually being hidden - two different bugs that looked similar at a glance, caught by zooming in on the actual rendered face rather than assuming the insertion worked.
 
+## Voice engine (free, local TTS option)
+
+Narration can now use [Kokoro TTS](https://github.com/thewh1teagle/kokoro-onnx) instead of OpenAI - free, open source (Apache 2.0 weights, MIT wrapper), 54 voices, runs locally on CPU, no per-call cost. `generate_audio.py` picked between whichever engine is requested, caching by `(engine, voice, text)` so switching engines never collides with the other's cache. Run `scripts/setup_kokoro.sh` once (installs `kokoro-onnx`/`soundfile`, downloads the ~340MB model files into `.cache/kokoro/`, gitignored), then pass `--voice-engine kokoro --voice af_heart` (or any of the 54) to either `generate_plan.py` (stored in the plan) or `build_short.py` (overrides it).
+
+**One real compatibility bug found and worked around, not guessed at:** the currently-published `kokoro-onnx` PyPI package (0.4.7) throws an `ONNXRuntimeError` on the newer `model-files-v1.1` release - that release changed the model's `speed` input from int32 to float, and 0.4.7 still sends int32. `setup_kokoro.sh` deliberately downloads `model-files-v1.0` instead, which matches what 0.4.7 actually expects.
+
+Verified end to end: real Kokoro-synthesized audio embedded in a composed `.lottie`, and lip sync correctly reacting to it (closed mouth at a silent frame, open mouth where the voice starts) - confirming the whole pipeline (duration-fitting, audio embedding, lip sync) works identically regardless of which engine produced the narration.
+
 ## Status
 
-Prompt → AI-generated plan (choosing between 3 expressive characters - eyes, eyebrows, blush, legs - by narrative role, with narration and props, in a chosen aspect ratio - 9:16 by default) → multi-scene `.lottie` with embedded audio, amplitude-driven lip sync, and duration-aware scenes, runtime-re-themeable via native Lottie Slots → exportable to a real MP4 with synced audio for channels that can't play `.lottie` directly. Not yet built: a single unsupervised CLI for the video export (the frame-capture step still needs a browser), background music separate from narration, and a second LLM provider (Anthropic) as an alternative to OpenAI.
+Prompt → AI-generated plan (choosing between 3 expressive characters - eyes, eyebrows, blush, legs - by narrative role, with narration (OpenAI or free local Kokoro TTS, 54 voices) and props, in a chosen aspect ratio - 9:16 by default) → multi-scene `.lottie` with embedded audio, amplitude-driven lip sync, and duration-aware scenes, runtime-re-themeable via native Lottie Slots → exportable to a real MP4 with synced audio for channels that can't play `.lottie` directly. Not yet built: eye animation (blinking/gaze) and more varied body language/poses per narrative beat, a single unsupervised CLI for the video export (the frame-capture step still needs a browser), background music separate from narration, and a second LLM provider (Anthropic) as an alternative to OpenAI.
 
 ## License
 

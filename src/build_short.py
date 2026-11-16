@@ -283,10 +283,12 @@ def embed_audio(scene_data, audio_bytes, audio_id):
     })
 
 
-def compose(plan, aspect_ratio=None):
+def compose(plan, aspect_ratio=None, voice_engine=None, voice=None):
     """Wrap each scene's layers as a precomp asset, then place sequential
     precomp layers in the main composition so scenes play one after another."""
     aspect_ratio = aspect_ratio or plan.get("aspectRatio", "9:16")
+    voice_engine = voice_engine or plan.get("voiceEngine", "openai")
+    voice = voice or plan.get("voice")
     if aspect_ratio not in ASPECT_RATIOS:
         raise ValueError(f"Unknown aspect ratio '{aspect_ratio}' - must be one of {list(ASPECT_RATIOS)}")
     canvas_w, canvas_h = ASPECT_RATIOS[aspect_ratio]
@@ -303,7 +305,7 @@ def compose(plan, aspect_ratio=None):
         fps = scene_data["fr"]
 
         if scene.get("narration"):
-            audio_bytes = synthesize_narration(scene["narration"])
+            audio_bytes = synthesize_narration(scene["narration"], engine=voice_engine, voice=voice)
             template_duration = scene_data["op"] - scene_data["ip"]
             audio_frames = math.ceil((audio_duration_seconds(audio_bytes) + PAD_SECONDS) * fps)
             if audio_frames > template_duration:
@@ -388,12 +390,20 @@ def main():
         "--aspect-ratio", choices=list(ASPECT_RATIOS), default=None,
         help="Output canvas shape (default: the plan's own 'aspectRatio' field, else 9:16)",
     )
+    parser.add_argument(
+        "--voice-engine", choices=["openai", "kokoro"], default=None,
+        help="TTS engine (default: the plan's own 'voiceEngine' field, else openai)",
+    )
+    parser.add_argument(
+        "--voice", default=None,
+        help="Voice name for the chosen engine (default: the plan's own 'voice' field, else each engine's default)",
+    )
     args = parser.parse_args()
 
     with open(args.plan) as f:
         plan = json.load(f)
 
-    combined = compose(plan, aspect_ratio=args.aspect_ratio)
+    combined = compose(plan, aspect_ratio=args.aspect_ratio, voice_engine=args.voice_engine, voice=args.voice)
     animation_id = plan.get("animationId", "short")
     package_dotlottie(combined, animation_id, args.out)
 

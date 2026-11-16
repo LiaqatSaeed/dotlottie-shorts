@@ -173,6 +173,11 @@ def main():
         "--aspect-ratio", choices=list(ASPECT_RATIOS), default="9:16",
         help="Output canvas shape for the short - 9:16 (default) is what YouTube Shorts/TikTok/Reels actually need",
     )
+    parser.add_argument(
+        "--voice-engine", choices=["openai", "kokoro"], default="openai",
+        help="TTS engine for build_short.py to use later - 'kokoro' is free/local but needs scripts/setup_kokoro.sh first",
+    )
+    parser.add_argument("--voice", default=None, help="Voice name for the chosen engine (default: each engine's own default)")
     args = parser.parse_args()
 
     available_templates = discover_templates()
@@ -187,6 +192,9 @@ def main():
 
     validate_plan(plan, available_templates)
     plan["aspectRatio"] = args.aspect_ratio
+    plan["voiceEngine"] = args.voice_engine
+    if args.voice:
+        plan["voice"] = args.voice
 
     out_path = Path(args.out)
     out_path.parent.mkdir(parents=True, exist_ok=True)
