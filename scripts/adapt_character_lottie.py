@@ -22,6 +22,7 @@ Usage:
 import argparse
 import copy
 import json
+import re
 from pathlib import Path
 
 NATIVE_STAGE = 512
@@ -61,6 +62,53 @@ def find_old_mouth_index(shapes):
         paints = [it["ty"] for it in g.get("it", []) if it["ty"] in ("fl", "st")]
         if paints == ["st"]:
             return i
+    return None
+
+
+def _shape_local_width(shape):
+    """Best-effort width of a shape group's own path/ellipse/rect, in its
+    own local coordinate space, used to scale our canonical mouth size
+    (46 units wide) to roughly match whatever the old mouth's size was."""
+    for it in shape.get("it", []):
+        if it["ty"] == "sh" and it["ks"].get("a") == 0:
+            verts = [v[0] for v in it["ks"]["k"].get("v", [])]
+            if verts:
+                return max(verts) - min(verts)
+        if it["ty"] in ("el", "rc") and it.get("s", {}).get("a") == 0:
+            return it["s"]["k"][0]
+    return None
+
+
+def find_mouth_layer(layers):
+    """Scan every layer for one whose shapes contain an existing mouth by
+    find_old_mouth_index's stroke-vs-fill heuristic, and return that layer
+    plus the mouth group's own local position/size - read directly from
+    the data rather than guessed, so no manual --mouth-pos/--mouth-scale
+    tuning is needed for a new character. Returns None if no layer looks
+    like it has an identifiable mouth (caller should fall back to asking
+    for manual parameters instead of guessing blindly)."""
+    # The stroke-vs-fill heuristic alone isn't unique to a head/face layer -
+    # a limb can have a single stroke-painted outline group too. Check
+    # layers whose name suggests a head/face first, and only fall back to
+    # scanning everything else if none of those have a detectable mouth.
+    def head_first(layer):
+        return 0 if re.search(r"head|face", layer.get("nm", ""), re.IGNORECASE) else 1
+
+    for layer in sorted(layers, key=head_first):
+        shapes = layer.get("shapes")
+        if not shapes:
+            continue
+        idx = find_old_mouth_index(shapes)
+        if idx is None:
+            continue
+        old = shapes[idx]
+        tr = next((it for it in old["it"] if it["ty"] == "tr"), None)
+        if tr is None or tr["p"].get("a") != 0:
+            continue  # animated or malformed transform - not safe to read a single position from
+        pos = tr["p"]["k"]
+        width = _shape_local_width(old)
+        scale = (width / MOUTH_SHAPES["mouth-closed"]["size"][0]) if width else 0.35
+        return layer["nm"], pos, scale
     return None
 
 
@@ -120,6 +168,25 @@ def adapt(data, mouth_layer_name, mouth_pos, mouth_scale, canvas_bg_color=(0.95,
     data["layers"].append(background)  # backmost
 
     return data
+
+
+def auto_adapt(data, canvas_bg_color=(0.95, 0.96, 0.98, 1)):
+    """adapt() with mouth-layer/position/scale derived automatically from
+    the character's own existing mouth shape instead of requiring them as
+    manual CLI arguments - what the live editor's Speak panel uses for an
+    arbitrary uploaded character. Raises ValueError if no layer has a
+    shape this heuristic recognizes as a mouth (stroke-painted, among
+    otherwise fill-painted shapes) - callers should surface that rather
+    than guess a placement with no basis in the actual artwork."""
+    found = find_mouth_layer(data["layers"])
+    if found is None:
+        raise ValueError(
+            "couldn't automatically find an existing mouth shape on this character "
+            "(looked for a stroke-painted shape among otherwise fill-painted shapes "
+            "on each layer) - adapt it manually with adapt_character_lottie.py instead"
+        )
+    mouth_layer_name, mouth_pos, mouth_scale = found
+    return adapt(data, mouth_layer_name, mouth_pos, mouth_scale, canvas_bg_color)
 
 
 if __name__ == "__main__":

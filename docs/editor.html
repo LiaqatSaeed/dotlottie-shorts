@@ -9,6 +9,15 @@
     const params = new URLSearchParams(location.search);
     const canvas = document.getElementById('anim');
     let dl = null;
+    let loadedBytes = null; // raw bytes of whatever's currently in the preview, kept around so Speak can send them for "Use loaded file"
+
+    function bytesToBase64(bytes) {
+      let binary = '';
+      for (let i = 0; i < bytes.length; i += 0x8000) {
+        binary += String.fromCharCode.apply(null, bytes.subarray(i, i + 0x8000));
+      }
+      return btoa(binary);
+    }
 
     const COLOR_SLOTS = ['skinColor', 'outfitColor', 'backgroundColor'];
     const MOUTH_SLOTS = ['mouth-closed', 'mouth-mid', 'mouth-round', 'mouth-wide'];
@@ -103,18 +112,27 @@
       const template = document.getElementById('speak-template').value;
       const btn = document.getElementById('speak-btn');
       btn.disabled = true;
-      btn.textContent = 'Synthesizing...';
+      document.getElementById('speak-status').style.color = '#888';
       document.getElementById('speak-status').textContent = '';
       try {
+        const payload = { text, template, voiceEngine: 'kokoro' };
+        if (template === 'custom') {
+          if (!loadedBytes) throw new Error('load a .lottie or .json file first');
+          btn.textContent = 'Adapting + synthesizing...';
+          payload.customLottie = bytesToBase64(new Uint8Array(loadedBytes));
+        } else {
+          btn.textContent = 'Synthesizing...';
+        }
         const resp = await fetch('/speak', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ text, template, voiceEngine: 'kokoro' }),
+          body: JSON.stringify(payload),
         });
         if (!resp.ok) throw new Error(await resp.text());
         const blob = await resp.blob();
         load(URL.createObjectURL(blob));
       } catch (e) {
+        document.getElementById('speak-status').style.color = '#f88';
         document.getElementById('speak-status').textContent = 'ERROR: ' + e.message;
       } finally {
         btn.disabled = false;
@@ -123,17 +141,21 @@
     };
 
     // --- loading a file ---
-    document.getElementById('file-input').addEventListener('change', (e) => {
+    document.getElementById('file-input').addEventListener('change', async (e) => {
       const file = e.target.files[0];
       if (!file) return;
+      loadedBytes = await file.arrayBuffer();
       load(URL.createObjectURL(file));
     });
-    document.getElementById('load-url').onclick = () => {
+    document.getElementById('load-url').onclick = async () => {
       const url = document.getElementById('url-input').value.trim();
-      if (url) load(url);
+      if (!url) return;
+      loadedBytes = await fetch(url).then((r) => r.arrayBuffer());
+      load(url);
     };
 
     const initialSrc = params.get('src') || '../dist/the-explorer.lottie';
+    fetch(initialSrc).then((r) => r.arrayBuffer()).then((b) => { loadedBytes = b; }).catch(() => {});
     load(initialSrc);
   </script>
   <style>
@@ -174,13 +196,14 @@
         <option value="nod">Nod character</option>
         <option value="point">Point character</option>
         <option value="your-character">Your uploaded character</option>
+        <option value="custom">Use currently loaded file (auto-adapt)</option>
       </select>
       <div style="margin-top:8px;">
         <textarea id="speak-text" rows="2" style="width:220px; border-radius:6px; background:#1a1a1a; color:#eee; border:1px solid #444;" placeholder="Type something..."></textarea>
       </div>
       <button id="speak-btn" style="margin-top:6px;">🗣 Speak</button>
       <div id="speak-status" style="font-size:12px; color:#f88; margin-top:4px;"></div>
-      <div style="font-size:11px; color:#777; margin-top:6px;">Needs the server started as "dotlottie-export" (port 8744) - synthesizes with the free local Kokoro voice.</div>
+      <div style="font-size:11px; color:#777; margin-top:6px;">Needs the server started as "dotlottie-export" (port 8744) - synthesizes with the free local Kokoro voice. "Use currently loaded file" sends whatever's loaded below/in the preview and tries to auto-detect its mouth - works if the character has a single stroke-outlined shape among otherwise filled ones (most hand-drawn faces); if it fails, adapt it manually with scripts/adapt_character_lottie.py.</div>
     </div>
 
     <div class="panel">

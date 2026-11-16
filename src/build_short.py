@@ -478,8 +478,17 @@ def compose(plan, aspect_ratio=None, voice_engine=None, voice=None):
     fr = None
 
     for i, scene in enumerate(plan["scenes"]):
-        template_path = REPO_ROOT / scene["template"]
-        scene_data = load_template(template_path, scene.get("params", {}))
+        if "templateData" in scene:
+            # Already-loaded/adapted template (e.g. a character uploaded
+            # live through the editor and auto-adapted on the spot) rather
+            # than one of our own on-disk templates - skip the disk read
+            # but still apply any requested color params the same way.
+            scene_data = copy.deepcopy(scene["templateData"])
+            if scene.get("params"):
+                deep_set_fill_colors(scene_data, scene["params"])
+        else:
+            template_path = REPO_ROOT / scene["template"]
+            scene_data = load_template(template_path, scene.get("params", {}))
         scene_id = f"scene-{i}"
         fps = scene_data["fr"]
         template_duration = scene_data["op"] - scene_data["ip"]
