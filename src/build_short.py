@@ -242,14 +242,21 @@ def embed_blinking(scene_data, scene_index=0):
 
 
 def fit_scene_to_canvas(scene_data, canvas_w, canvas_h):
-    """Adapt a 512x512-authored scene to a different output canvas by
-    padding, not rescaling: resize the background to fill the new canvas,
-    and shift every other layer by the same offset that recenters the
-    original 512x512 content within it. A no-op when canvas_w/h are 512."""
-    dx = (canvas_w - NATIVE_STAGE) / 2
-    dy = (canvas_h - NATIVE_STAGE) / 2
-    if dx == 0 and dy == 0:
-        return
+    """Adapt a scene to a different output canvas. Two cases:
+
+    - Our own templates (authored on a 512x512 stage): pad, don't rescale -
+      resize the background to fill the new canvas, and shift every other
+      layer by the offset that recenters the original 512x512 content.
+      A no-op when canvas_w/h are already 512.
+    - A third-party template adapted by scripts/adapt_character_lottie.py
+      (any other native size): that script already added one
+      "scene-root-scale" null layer whose anchor/scale normalize its native
+      stage down to our 512-equivalent content size - here we only need to
+      set *where* that normalized content lands, by pointing its position
+      at the chosen canvas's center. Every other layer is already correctly
+      parented under it (or is the background, resized the same way either
+      case)."""
+    is_foreign = scene_data["w"] != NATIVE_STAGE or scene_data["h"] != NATIVE_STAGE
 
     for layer in scene_data["layers"]:
         is_background = any(
@@ -262,7 +269,22 @@ def fit_scene_to_canvas(scene_data, canvas_w, canvas_h):
                         item["s"]["k"] = [canvas_w, canvas_h]
                         item["p"]["k"] = [canvas_w / 2, canvas_h / 2]
             continue
+        if is_foreign:
+            if layer.get("nm") == "scene-root-scale":
+                layer["ks"]["p"]["k"] = [canvas_w / 2, canvas_h / 2, 0]
+            continue  # every other foreign layer is parented under scene-root-scale already
 
+    if is_foreign:
+        return
+
+    dx = (canvas_w - NATIVE_STAGE) / 2
+    dy = (canvas_h - NATIVE_STAGE) / 2
+    if dx == 0 and dy == 0:
+        return
+
+    for layer in scene_data["layers"]:
+        if any(shape.get("nm") == "background-group" for shape in layer.get("shapes", [])):
+            continue  # already handled above
         pos = layer["ks"]["p"]
         if pos.get("a") == 1:
             for kf in pos["k"]:
