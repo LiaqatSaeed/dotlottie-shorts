@@ -146,9 +146,15 @@ Verified visually at 320x568 (9:16): the background fills edge-to-edge with no m
 
 **Known limitation:** a scene's prop icon is positioned relative to the original 512x512 square's corner, now recentered - so on a much taller/wider canvas it sits near the character rather than at the true corner of the full frame.
 
+## Character redesign: an actual face
+
+All three templates now have eyes (white sclera + dark pupil + a tiny highlight dot for sparkle), asymmetric raised eyebrows (one arched higher than the other, for a goofy/curious look rather than a neutral one), and rosy cheek blush - on top of the legs/shoes/hair from the earlier art upgrade. Added programmatically (a small Python script inserts the same 10 shape groups into each template's head, matching their shared coordinate conventions), not hand-edited three times.
+
+Hit the exact same front-to-back ordering mistake as every previous shape addition in this project, twice in one go: sclera was listed before pupil/highlight (hiding them completely), and separately the eyebrows were initially too close to the hairline and the same color, making them blend into it rather than actually being hidden - two different bugs that looked similar at a glance, caught by zooming in on the actual rendered face rather than assuming the insertion worked.
+
 ## Status
 
-Prompt → AI-generated plan (choosing between 3 templates by narrative role, with narration and props, in a chosen aspect ratio - 9:16 by default) → multi-scene `.lottie` with embedded audio, amplitude-driven lip sync, and duration-aware scenes, runtime-re-themeable via native Lottie Slots → exportable to a real MP4 with synced audio for channels that can't play `.lottie` directly. Not yet built: a single unsupervised CLI for the video export (the frame-capture step still needs a browser), background music separate from narration, and a second LLM provider (Anthropic) as an alternative to OpenAI.
+Prompt → AI-generated plan (choosing between 3 expressive characters - eyes, eyebrows, blush, legs - by narrative role, with narration and props, in a chosen aspect ratio - 9:16 by default) → multi-scene `.lottie` with embedded audio, amplitude-driven lip sync, and duration-aware scenes, runtime-re-themeable via native Lottie Slots → exportable to a real MP4 with synced audio for channels that can't play `.lottie` directly. Not yet built: a single unsupervised CLI for the video export (the frame-capture step still needs a browser), background music separate from narration, and a second LLM provider (Anthropic) as an alternative to OpenAI.
 
 ## License
 
