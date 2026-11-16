@@ -149,6 +149,45 @@ def embed_lip_sync(scene_data, audio_bytes):
         tr["o"] = {"a": 1, "k": mouth_opacity_keyframes(active_states, name)}
 
 
+EYE_GROUPS = [
+    f"eye-{side}-{part}"
+    for side in ("left", "right")
+    for part in ("sclera", "pupil", "highlight")
+]
+BLINK_INTERVAL = 75  # frames between blinks (~2.5s at 30fps) - not truly random, but not static either
+BLINK_CLOSE_FRAMES = 3  # how long the eye stays shut
+
+
+def blink_scale_keyframes(total_frames, phase):
+    """Hold-style keyframes for one eye-part's vertical scale: [100,100]
+    (open) most of the time, briefly [100,8] (shut) at regular intervals -
+    same crisp on/off style as the mouth-viseme keyframes, since a blink
+    is fast enough that easing it would just look like squinting."""
+    keyframes = [{"t": 0, "s": [100, 100], "h": 1}]
+    t = phase
+    while t < total_frames:
+        keyframes.append({"t": t, "s": [100, 8], "h": 1})
+        reopen_t = min(t + BLINK_CLOSE_FRAMES, total_frames)
+        keyframes.append({"t": reopen_t, "s": [100, 100], "h": 1})
+        t += BLINK_INTERVAL
+    keyframes.append({"t": total_frames, "s": keyframes[-1]["s"]})
+    return keyframes
+
+
+def embed_blinking(scene_data, scene_index=0):
+    """Key every eye-part's vertical scale to blink periodically for the
+    scene's full duration, so eyes aren't just static dots."""
+    total_frames = scene_data["op"] - scene_data["ip"]
+    # stagger the phase per scene so every character on screen doesn't blink
+    # in perfect unison, without needing real randomness (which would make
+    # output non-reproducible from the same plan)
+    phase = 20 + (scene_index * 11) % 15
+    for name in EYE_GROUPS:
+        tr = find_group_transform(scene_data["layers"], name)
+        if tr is not None:
+            tr["s"] = {"a": 1, "k": blink_scale_keyframes(total_frames, phase)}
+
+
 def fit_scene_to_canvas(scene_data, canvas_w, canvas_h):
     """Adapt a 512x512-authored scene to a different output canvas by
     padding, not rescaling: resize the background to fill the new canvas,
@@ -192,6 +231,58 @@ def extend_scene_duration(scene_data, new_duration):
     scene_data["op"] = scene_data["ip"] + new_duration
     for layer in scene_data["layers"]:
         layer["op"] = new_duration
+
+
+def tile_keyframes(keyframes, period, total_frames):
+    """Repeat an animated property's keyframe pattern (authored for one
+    `period`-frame cycle, e.g. a wave swing or a head-bob) every `period`
+    frames until `total_frames`, instead of freezing after the first cycle.
+    The final keyframe of each cycle is dropped before tiling, since its
+    value is identical to the next cycle's first keyframe at the same
+    relative time - keeping it would create a duplicate keyframe at that t."""
+    if total_frames <= period or len(keyframes) < 2:
+        return keyframes
+
+    base = keyframes[:-1]
+    tiled = []
+    offset = 0
+    while offset < total_frames:
+        for kf in base:
+            t = offset + kf["t"]
+            if t >= total_frames:
+                break
+            new_kf = copy.deepcopy(kf)
+            new_kf["t"] = t
+            tiled.append(new_kf)
+        offset += period
+
+    last_value = tiled[-1]["s"] if tiled else keyframes[-1]["s"]
+    tiled.append({"t": total_frames, "s": last_value})
+    return tiled
+
+
+# Layers whose animated transform property should loop for a scene's full
+# (possibly narration-extended) duration instead of playing once and
+# freezing - gives a line reading longer than one gesture cycle some
+# continued body language instead of the character going rigid partway
+# through. Maps layer name -> which ks property to tile.
+LOOPING_GESTURES = {
+    "right-arm": "r",
+    "pointing-arm": "r",
+    "character-body-head": "p",
+}
+
+
+def loop_body_motion(scene_data, period, total_frames):
+    if total_frames <= period:
+        return
+    for layer in scene_data["layers"]:
+        prop_key = LOOPING_GESTURES.get(layer.get("nm"))
+        if not prop_key:
+            continue
+        prop = layer["ks"].get(prop_key)
+        if prop and prop.get("a") == 1:
+            prop["k"] = tile_keyframes(prop["k"], period, total_frames)
 
 
 def embed_prop(scene_data, prop_name, position=PROP_POSITION):
@@ -303,10 +394,10 @@ def compose(plan, aspect_ratio=None, voice_engine=None, voice=None):
         scene_data = load_template(template_path, scene.get("params", {}))
         scene_id = f"scene-{i}"
         fps = scene_data["fr"]
+        template_duration = scene_data["op"] - scene_data["ip"]
 
         if scene.get("narration"):
             audio_bytes = synthesize_narration(scene["narration"], engine=voice_engine, voice=voice)
-            template_duration = scene_data["op"] - scene_data["ip"]
             audio_frames = math.ceil((audio_duration_seconds(audio_bytes) + PAD_SECONDS) * fps)
             if audio_frames > template_duration:
                 extend_scene_duration(scene_data, audio_frames)
@@ -314,6 +405,8 @@ def compose(plan, aspect_ratio=None, voice_engine=None, voice=None):
             embed_lip_sync(scene_data, audio_bytes)
         if scene.get("prop"):
             embed_prop(scene_data, scene["prop"])
+        loop_body_motion(scene_data, template_duration, scene_data["op"] - scene_data["ip"])
+        embed_blinking(scene_data, scene_index=i)
         fit_scene_to_canvas(scene_data, canvas_w, canvas_h)
         if fr is None:
             fr = scene_data["fr"]
