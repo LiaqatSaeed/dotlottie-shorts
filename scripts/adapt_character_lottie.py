@@ -93,15 +93,39 @@ def iter_layer_containers(data):
             yield asset["id"], asset["layers"]
 
 
+def _old_mouth_shape_candidate(layer):
+    """One layer's existing single swappable-mouth shape (if it has one),
+    read directly rather than guessed: position from the shape's own
+    static transform, scale from its own bounding box relative to our
+    canonical mouth size. Returns (pos, scale) or None - shared by the
+    auto-search (find_mouth_layer) and the manual picker below, which both
+    need the same "does this layer already have a replaceable mouth, and
+    where/how big is it" read, just reached a different way (search vs. a
+    user pointing at a layer directly)."""
+    shapes = layer.get("shapes")
+    if not shapes:
+        return None
+    idx = find_old_mouth_index(shapes)
+    if idx is None:
+        return None
+    old = shapes[idx]
+    tr = next((it for it in old["it"] if it["ty"] == "tr"), None)
+    if tr is None or tr["p"].get("a") != 0:
+        return None  # animated or malformed transform - not safe to read a single position from
+    pos = tr["p"]["k"]
+    width = _shape_local_width(old)
+    scale = (width / MOUTH_SHAPES["mouth-closed"]["size"][0]) if width else 0.35
+    return pos, scale
+
+
 def find_mouth_layer(data):
     """Scan every layer, in every composition (main + nested precomps),
-    for one whose shapes contain an existing mouth by find_old_mouth_index's
-    stroke-vs-fill heuristic, and return where it lives plus the mouth
-    group's own local position/size - read directly from the data rather
-    than guessed, so no manual --mouth-pos/--mouth-scale tuning is needed
-    for a new character. Returns None if no layer looks like it has an
-    identifiable swappable mouth (caller should fall back to a different
-    detection strategy, or to manual parameters, rather than guess blindly)."""
+    for one with an existing swappable mouth shape (_old_mouth_shape_candidate)
+    and return where it lives plus that shape's own position/size, so no
+    manual --mouth-pos/--mouth-scale tuning is needed for a new character.
+    Returns None if no layer looks like it has one (caller should fall
+    back to a different detection strategy, or to manual parameters,
+    rather than guess blindly)."""
     # The stroke-vs-fill heuristic alone isn't unique to a head/face layer -
     # a limb can have a single stroke-painted outline group too. Check
     # layers whose name suggests a head/face first, and only fall back to
@@ -111,20 +135,10 @@ def find_mouth_layer(data):
 
     for container_id, layers in iter_layer_containers(data):
         for layer in sorted(layers, key=head_first):
-            shapes = layer.get("shapes")
-            if not shapes:
-                continue
-            idx = find_old_mouth_index(shapes)
-            if idx is None:
-                continue
-            old = shapes[idx]
-            tr = next((it for it in old["it"] if it["ty"] == "tr"), None)
-            if tr is None or tr["p"].get("a") != 0:
-                continue  # animated or malformed transform - not safe to read a single position from
-            pos = tr["p"]["k"]
-            width = _shape_local_width(old)
-            scale = (width / MOUTH_SHAPES["mouth-closed"]["size"][0]) if width else 0.35
-            return container_id, layer["nm"], pos, scale
+            candidate = _old_mouth_shape_candidate(layer)
+            if candidate:
+                pos, scale = candidate
+                return container_id, layer["nm"], pos, scale
     return None
 
 
@@ -167,6 +181,7 @@ def insert_mouth_shapes(data, mouth_layer_name, mouth_pos, mouth_scale, mouth_co
     else:
         target_layers = next(a for a in data["assets"] if a["id"] == mouth_container_id)["layers"]
     head_layer = next(l for l in target_layers if l["nm"] == mouth_layer_name)
+    head_layer.setdefault("shapes", [])  # a manually-picked layer might be an image/shapeless layer with no mouth to replace
     old_idx = find_old_mouth_index(head_layer["shapes"])
     if old_idx is not None:
         del head_layer["shapes"][old_idx]
@@ -347,6 +362,58 @@ def auto_adapt(data, canvas_bg_color=(0.95, 0.96, 0.98, 1)):
         return adapted, {"type": "axis", "containerId": container_id, "targets": targets}
 
     raise ValueError(describe_unadaptable_reason(data))
+
+
+def find_layer(data, container_id, layer_name):
+    layers = data["layers"] if container_id is None else next(
+        a["layers"] for a in data["assets"] if a["id"] == container_id
+    )
+    return next(l for l in layers if l["nm"] == layer_name)
+
+
+def adapt_with_manual_layer(data, container_id, layer_name, canvas_bg_color=(0.95, 0.96, 0.98, 1)):
+    """The human fallback when auto_adapt's search can't find a mouth on
+    its own: the editor's manual picker lets someone point at the layer
+    that IS the mouth (via position markers, since auto-detection failed
+    to identify it from the data alone), and this applies the same
+    derivation logic as auto_adapt - same shape/axis checks - but to that
+    one named layer instead of searching for it. If the picked layer has
+    neither an existing swappable mouth shape nor a usable animated
+    position/scale, falls back to inserting a brand-new mouth at the
+    layer's own anchor point - the one case auto_adapt can't attempt at
+    all, since it never guesses a placement with no existing mouth-like
+    evidence to go on; here a person already pointed at the right layer,
+    which is exactly the evidence that was missing."""
+    layer = find_layer(data, container_id, layer_name)
+
+    shape_candidate = _old_mouth_shape_candidate(layer)
+    if shape_candidate:
+        pos, scale = shape_candidate
+        adapted = adapt(data, layer_name, pos, scale, canvas_bg_color, mouth_container_id=container_id)
+        return adapted, {"type": "shape"}
+
+    axis_candidate = _position_y_candidate(layer) or _scale_y_candidate(layer)
+    if axis_candidate:
+        axis_candidate["layer"] = layer_name
+        adapted = add_canvas_wrapper(copy.deepcopy(data), canvas_bg_color)
+        return adapted, {"type": "axis", "containerId": container_id, "targets": [axis_candidate]}
+
+    if layer.get("ty") != 4:
+        raise ValueError(
+            f"'{layer_name}' is not a vector shape layer (ty={layer.get('ty')}) - inserting mouth "
+            "shapes into it wouldn't render (e.g. an image layer can't host shapes at all); pick a "
+            "layer whose art is actually drawn with shapes"
+        )
+
+    # Last resort: no existing mouth-like shape or animation to read a
+    # placement from - insert one fresh, centered on the layer's own
+    # anchor (its own designated "center of content" point), at a
+    # reasonable default scale, same as find_mouth_layer's own fallback
+    # scale when a shape's width can't be measured.
+    anchor = layer.get("ks", {}).get("a", {}).get("k", [0, 0, 0])
+    adapted = copy.deepcopy(data)
+    insert_mouth_shapes(adapted, layer_name, anchor[:2], 0.35, mouth_container_id=container_id)
+    return add_canvas_wrapper(adapted, canvas_bg_color), {"type": "shape"}
 
 
 if __name__ == "__main__":

@@ -43,6 +43,9 @@ class Handler(http.server.SimpleHTTPRequestHandler):
         if parsed.path == "/speak":
             self.handle_speak()
             return
+        if parsed.path == "/inspect":
+            self.handle_inspect()
+            return
         if parsed.path != "/save":
             self.send_response(404)
             self.end_headers()
@@ -89,7 +92,9 @@ class Handler(http.server.SimpleHTTPRequestHandler):
 
             scene = {"label": "speak", "narration": text}
             if template_key == "custom":
-                scene["templateData"], scene["lipSyncMechanism"] = self._adapt_custom_lottie(body.get("customLottie"))
+                scene["templateData"], scene["lipSyncMechanism"] = self._adapt_custom_lottie(
+                    body.get("customLottie"), body.get("manualMouthLayer")
+                )
             else:
                 if template_key not in SPEAK_TEMPLATES:
                     raise ValueError(f"unknown template '{template_key}' - must be one of {list(SPEAK_TEMPLATES)}")
@@ -120,27 +125,59 @@ class Handler(http.server.SimpleHTTPRequestHandler):
             self.end_headers()
             self.wfile.write(str(e).encode())
 
-    def _adapt_custom_lottie(self, customLottie_b64):
+    @staticmethod
+    def _decode_lottie_json(raw_b64):
         """Decode whatever the editor currently has loaded (a raw Lottie
         .json, or a zipped .lottie - sniffed by the zip magic bytes rather
         than trusting a filename/extension the browser may not have sent
-        accurately) and auto-adapt it so it can speak, without the manual
-        --mouth-layer/--mouth-pos/--mouth-scale tuning adapt_character_lottie.py's
-        CLI normally needs."""
-        if not customLottie_b64:
-            raise ValueError("template 'custom' needs a customLottie field (base64-encoded .lottie or .json)")
-        raw = base64.b64decode(customLottie_b64)
-
+        accurately) into the plain Lottie JSON dict. Shared by /speak's
+        auto/manual adapt and /inspect, which hands the same JSON back to
+        the browser so it can compute marker positions for the manual
+        mouth-picker without needing a zip-reading library client-side."""
+        if not raw_b64:
+            raise ValueError("needs a base64-encoded .lottie or .json body")
+        raw = base64.b64decode(raw_b64)
         if raw[:4] == b"PK\x03\x04":
             with zipfile.ZipFile(io.BytesIO(raw)) as zf:
                 manifest = json.loads(zf.read("manifest.json"))
                 first_anim_id = manifest["animations"][0]["id"]
-                data = json.loads(zf.read(f"animations/{first_anim_id}.json"))
-        else:
-            data = json.loads(raw)
+                return json.loads(zf.read(f"animations/{first_anim_id}.json"))
+        return json.loads(raw)
 
-        from adapt_character_lottie import auto_adapt  # local import: only needed for this endpoint
+    def _adapt_custom_lottie(self, customLottie_b64, manual_mouth_layer=None):
+        """Adapt the editor's currently-loaded file so it can speak,
+        without the manual --mouth-layer/--mouth-pos/--mouth-scale tuning
+        adapt_character_lottie.py's CLI normally needs. By default tries
+        to auto-detect the mouth; if manual_mouth_layer ({"containerId",
+        "layerName"}) is given - the editor's marker-picker fallback for
+        when auto-detection can't find it on its own - adapts that exact
+        layer instead of searching, skipping straight to the same
+        shape/axis/last-resort derivation logic auto_adapt itself uses."""
+        data = self._decode_lottie_json(customLottie_b64)
+        from adapt_character_lottie import auto_adapt, adapt_with_manual_layer  # local import: only needed for this endpoint
+        if manual_mouth_layer:
+            return adapt_with_manual_layer(data, manual_mouth_layer.get("containerId"), manual_mouth_layer["layerName"])
         return auto_adapt(data)
+
+    def handle_inspect(self):
+        """POST /inspect with a JSON body {lottie: base64} returns the
+        decoded Lottie JSON (unzipped server-side if it was a .lottie) so
+        the editor's manual mouth-picker can compute layer marker
+        positions in JS without a zip-reading library in the browser."""
+        length = int(self.headers.get("Content-Length", 0))
+        try:
+            body = json.loads(self.rfile.read(length))
+            data = self._decode_lottie_json(body.get("lottie"))
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json")
+            self.end_headers()
+            self.wfile.write(json.dumps(data).encode())
+        except Exception as e:
+            traceback.print_exc()
+            self.send_response(500)
+            self.send_header("Content-Type", "text/plain")
+            self.end_headers()
+            self.wfile.write(str(e).encode())
 
     def do_OPTIONS(self):
         self.send_response(200)

@@ -10,6 +10,7 @@
     const canvas = document.getElementById('anim');
     let dl = null;
     let loadedBytes = null; // raw bytes of whatever's currently in the preview, kept around so Speak can send them for "Use loaded file"
+    let pickedMouth = null; // {containerId, layerName} from the manual marker picker, or null to let the server auto-detect
 
     function bytesToBase64(bytes) {
       let binary = '';
@@ -17,6 +18,101 @@
         binary += String.fromCharCode.apply(null, bytes.subarray(i, i + 0x8000));
       }
       return btoa(binary);
+    }
+
+    // --- manual mouth-marker picker (fallback for when auto-detect fails) ---
+    // Computes each layer's own anchor point mapped through its ancestor
+    // chain (including across a nested precomp boundary) into the main
+    // composition's own coordinate space, at the player's current frame -
+    // a lightweight schematic of "roughly where is this layer", not a
+    // pixel-accurate render of its actual shapes, drawn as a separate small
+    // SVG diagram rather than overlaid on the real canvas, which avoids
+    // having to replicate dotlottie-web's own internal fit/letterbox math.
+    function evalKeyedProp(prop, frame) {
+      if (!prop) return undefined;
+      if (prop.a !== 1) return prop.k;
+      const kfs = prop.k;
+      if (frame <= kfs[0].t) return kfs[0].s;
+      for (let i = 0; i < kfs.length - 1; i++) {
+        if (frame >= kfs[i].t && frame < kfs[i + 1].t) {
+          const t0 = kfs[i].t, t1 = kfs[i + 1].t;
+          const s0 = kfs[i].s, s1 = kfs[i + 1].s ?? s0;
+          const f = (t1 - t0) ? (frame - t0) / (t1 - t0) : 0;
+          return Array.isArray(s0) ? s0.map((v, idx) => v + ((s1[idx] ?? v) - v) * f) : s0 + (s1 - s0) * f;
+        }
+      }
+      const last = kfs[kfs.length - 1];
+      return last.s ?? kfs[kfs.length - 2]?.s;
+    }
+    function layerPosition(ks, frame) {
+      const p = ks.p;
+      if (!p) return [0, 0];
+      if (p.s) {
+        const x = evalKeyedProp(p.x, frame), y = evalKeyedProp(p.y, frame);
+        return [Array.isArray(x) ? x[0] : x, Array.isArray(y) ? y[0] : y];
+      }
+      const v = evalKeyedProp(p, frame);
+      return [v[0], v[1]];
+    }
+    function layerAnchor(ks, frame) {
+      const a = ks.a;
+      if (!a) return [0, 0];
+      const v = a.a === 1 ? evalKeyedProp(a, frame) : a.k;
+      return [v[0], v[1]];
+    }
+    // Maps a point from this layer's own local space into its PARENT's
+    // space: parent_point = T(p) + R(r) * S(s/100) * (point - anchor).
+    function applyLayerTransform(ks, frame, point) {
+      const [px, py] = layerPosition(ks, frame);
+      const [ax, ay] = layerAnchor(ks, frame);
+      const rDeg = (ks.r && evalKeyedProp(ks.r, frame)) || 0;
+      const sArr = (ks.s && evalKeyedProp(ks.s, frame)) || [100, 100];
+      const sx = (Array.isArray(sArr) ? sArr[0] : sArr) / 100, sy = (Array.isArray(sArr) ? sArr[1] : sArr) / 100;
+      const rad = (rDeg * Math.PI) / 180;
+      const dx = (point[0] - ax) * sx, dy = (point[1] - ay) * sy;
+      return [dx * Math.cos(rad) - dy * Math.sin(rad) + px, dx * Math.sin(rad) + dy * Math.cos(rad) + py];
+    }
+    function findOuterReferencingLayer(lottie, assetId) {
+      for (const l of lottie.layers) if (l.ty === 0 && l.refId === assetId) return { layer: l, containerId: null };
+      for (const asset of lottie.assets || []) {
+        if (!asset.layers) continue;
+        for (const l of asset.layers) if (l.ty === 0 && l.refId === assetId) return { layer: l, containerId: asset.id };
+      }
+      return null;
+    }
+    function containerLayers(lottie, containerId) {
+      return containerId === null ? lottie.layers : lottie.assets.find((a) => a.id === containerId).layers;
+    }
+    function worldMarkerFor(lottie, containerId, targetLayer, frame) {
+      let point = layerPosition(targetLayer.ks, frame); // in target's OWN parent's space already - applying the target's own transform to its own anchor is just its position, so we start here and only need to walk ANCESTORS from here
+      let layer = targetLayer, cId = containerId, layers = containerLayers(lottie, cId);
+      while (true) {
+        if (layer.parent != null) {
+          const parentLayer = layers.find((l) => l.ind === layer.parent);
+          if (!parentLayer) break;
+          point = applyLayerTransform(parentLayer.ks, frame, point);
+          layer = parentLayer;
+          continue;
+        }
+        if (cId === null) break; // reached the main composition
+        const outer = findOuterReferencingLayer(lottie, cId);
+        if (!outer) break;
+        point = applyLayerTransform(outer.layer.ks, frame, point);
+        layer = outer.layer;
+        cId = outer.containerId;
+        layers = containerLayers(lottie, cId);
+      }
+      return point;
+    }
+    function allLayerMarkers(lottie, frame) {
+      const markers = [];
+      markers.push(...lottie.layers.map((l) => ({ containerId: null, layer: l })));
+      for (const asset of lottie.assets || []) {
+        if (asset.layers) markers.push(...asset.layers.map((l) => ({ containerId: asset.id, layer: l })));
+      }
+      return markers
+        .filter((m) => m.layer.nm) // skip unnamed layers - nothing sensible to label/send back to the server
+        .map((m) => ({ containerId: m.containerId, layerName: m.layer.nm, point: worldMarkerFor(lottie, m.containerId, m.layer, frame) }));
     }
 
     const COLOR_SLOTS = ['skinColor', 'outfitColor', 'backgroundColor'];
@@ -120,6 +216,7 @@
           if (!loadedBytes) throw new Error('load a .lottie or .json file first');
           btn.textContent = 'Adapting + synthesizing...';
           payload.customLottie = bytesToBase64(new Uint8Array(loadedBytes));
+          if (pickedMouth) payload.manualMouthLayer = pickedMouth;
         } else {
           btn.textContent = 'Synthesizing...';
         }
@@ -140,17 +237,69 @@
       }
     };
 
+    // --- manual mouth picker UI ---
+    document.getElementById('show-markers-btn').onclick = async () => {
+      if (!loadedBytes) {
+        document.getElementById('marker-status').textContent = 'load a .lottie or .json file first';
+        return;
+      }
+      const statusEl = document.getElementById('marker-status');
+      statusEl.textContent = 'loading layers...';
+      try {
+        const resp = await fetch('/inspect', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ lottie: bytesToBase64(new Uint8Array(loadedBytes)) }),
+        });
+        if (!resp.ok) throw new Error(await resp.text());
+        const lottie = await resp.json();
+        const frame = Math.round(dl?.currentFrame || 0);
+        const markers = allLayerMarkers(lottie, frame);
+        const svg = document.getElementById('marker-svg');
+        svg.setAttribute('viewBox', `0 0 ${lottie.w} ${lottie.h}`);
+        svg.innerHTML = markers.map((m, i) =>
+          `<circle cx="${m.point[0]}" cy="${m.point[1]}" r="${lottie.w * 0.015}" data-i="${i}" />`
+        ).join('');
+        svg.dataset.markers = JSON.stringify(markers.map((m) => ({ containerId: m.containerId, layerName: m.layerName })));
+        for (const circle of svg.querySelectorAll('circle')) {
+          circle.onclick = () => {
+            const all = JSON.parse(svg.dataset.markers);
+            const picked = all[Number(circle.dataset.i)];
+            pickedMouth = { containerId: picked.containerId, layerName: picked.layerName };
+            for (const c of svg.querySelectorAll('circle')) c.classList.remove('picked');
+            circle.classList.add('picked');
+            document.getElementById('marker-status').textContent = `picked: ${picked.layerName}`;
+          };
+        }
+        statusEl.textContent = `${markers.length} layers - click the one that's the mouth`;
+      } catch (e) {
+        statusEl.textContent = 'ERROR: ' + e.message;
+      }
+    };
+    document.getElementById('clear-pick-btn').onclick = () => {
+      pickedMouth = null;
+      document.getElementById('marker-svg').innerHTML = '';
+      document.getElementById('marker-status').textContent = 'cleared - back to auto-detect';
+    };
+
     // --- loading a file ---
+    function resetPick() {
+      pickedMouth = null;
+      document.getElementById('marker-svg').innerHTML = '';
+      document.getElementById('marker-status').textContent = '';
+    }
     document.getElementById('file-input').addEventListener('change', async (e) => {
       const file = e.target.files[0];
       if (!file) return;
       loadedBytes = await file.arrayBuffer();
+      resetPick();
       load(URL.createObjectURL(file));
     });
     document.getElementById('load-url').onclick = async () => {
       const url = document.getElementById('url-input').value.trim();
       if (!url) return;
       loadedBytes = await fetch(url).then((r) => r.arrayBuffer());
+      resetPick();
       load(url);
     };
 
@@ -174,6 +323,10 @@
     .color-row label { width: 100px; font-size: 13px; }
     input[type="url"] { width: 220px; padding: 6px; border-radius: 6px; border: 1px solid #444; background: #1a1a1a; color: #eee; }
     #status { font-size: 12px; color: #888; }
+    #marker-svg { width: 100%; max-width: 240px; background: #111; border-radius: 6px; margin-top: 8px; display: block; }
+    #marker-svg circle { fill: #4a7cff; fill-opacity: 0.7; stroke: #fff; stroke-width: 1; cursor: pointer; }
+    #marker-svg circle:hover { fill: #7c9fff; }
+    #marker-svg circle.picked { fill: #ff4a4a; fill-opacity: 1; }
   </style>
 </head>
 <body>
@@ -204,6 +357,15 @@
       <button id="speak-btn" style="margin-top:6px;">🗣 Speak</button>
       <div id="speak-status" style="font-size:12px; color:#f88; margin-top:4px;"></div>
       <div style="font-size:11px; color:#777; margin-top:6px;">Needs the server started as "dotlottie-export" (port 8744) - synthesizes with the free local Kokoro voice. "Use currently loaded file" sends whatever's loaded below/in the preview and tries to auto-detect its mouth - works if the character has a single stroke-outlined shape among otherwise filled ones (most hand-drawn faces); if it fails, adapt it manually with scripts/adapt_character_lottie.py.</div>
+    </div>
+
+    <div class="panel">
+      <h2>Pick mouth manually</h2>
+      <div style="font-size:11px; color:#777; margin-bottom:8px;">If "Use currently loaded file" can't auto-detect the mouth, show every layer as a dot (at the player's current frame) and click the one that's actually the mouth.</div>
+      <button id="show-markers-btn">Show layer markers</button>
+      <button id="clear-pick-btn">Clear pick</button>
+      <svg id="marker-svg" viewBox="0 0 512 512"></svg>
+      <div id="marker-status" style="font-size:12px; color:#9c9; margin-top:4px;"></div>
     </div>
 
     <div class="panel">
