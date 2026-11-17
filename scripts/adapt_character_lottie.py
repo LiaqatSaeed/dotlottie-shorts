@@ -129,11 +129,10 @@ def find_mouth_layer(data):
 
 
 def describe_unadaptable_reason(data):
-    """adapt()/auto_adapt() only know how to drive one rig convention: a
-    single swappable mouth shape (find_mouth_layer above). When that's not
-    found, give a specific reason instead of a generic failure, by
-    recognizing other known-but-unsupported patterns we've actually seen in
-    the wild, so the caller/user knows *why*, not just that it didn't work."""
+    """auto_adapt() tries each known rig convention (find_mouth_layer,
+    find_beak_mechanism) before giving up - this only runs once neither
+    matched, to give a specific reason instead of a generic failure, so
+    the caller/user knows *why*, not just that it didn't work."""
     has_any_shapes = any(
         layer.get("shapes") for _, layers in iter_layer_containers(data) for layer in layers
     )
@@ -142,27 +141,29 @@ def describe_unadaptable_reason(data):
                 "it's a raster/frame-by-frame animation, not a vector rig, so shape-based mouth "
                 "insertion can't apply to it regardless of layer names")
 
-    beak_like = re.compile(r"beak|jaw|mouth|bill|lip", re.IGNORECASE)
     for _, layers in iter_layer_containers(data):
         for layer in layers:
-            if not beak_like.search(layer.get("nm", "")):
+            if not BEAK_LIKE.search(layer.get("nm", "")):
                 continue
             scale = layer.get("ks", {}).get("s")
             if isinstance(scale, dict) and scale.get("a") == 1 and len(scale.get("k", [])) >= 2:
-                return (f"found a layer named '{layer['nm']}' that looks mouth-related and has its "
-                        "own scale animation (a continuous open/close mechanism, likely matte-driven) "
-                        "rather than a swappable discrete mouth shape - this rig convention isn't "
-                        "automated yet, only the shape-swap convention is")
+                return (f"found a layer named '{layer['nm']}' that looks mouth-related with its own "
+                        "scale animation, but find_beak_mechanism couldn't derive a consistent "
+                        "open/close range from it (e.g. its keyframes don't share one x-scale "
+                        "value) - this character's mechanism needs a closer look, not a guess")
     return ("couldn't automatically find an existing mouth shape on this character "
             "(looked for a stroke-painted shape among otherwise fill-painted shapes "
             "on each layer, including inside nested precomps) - adapt it manually "
             "with adapt_character_lottie.py instead")
 
 
-def adapt(data, mouth_layer_name, mouth_pos, mouth_scale, canvas_bg_color=(0.95, 0.96, 0.98, 1), mouth_container_id=None):
-    data = copy.deepcopy(data)
-    native_w, native_h = data["w"], data["h"]
-
+def insert_mouth_shapes(data, mouth_layer_name, mouth_pos, mouth_scale, mouth_container_id=None):
+    """Mutates data in place: swaps the mouth-layer's existing single mouth
+    shape (if any) for our 4 named, independently-togglable mouth groups.
+    Split out from adapt() so the canvas-wrapping step below can run for a
+    character that doesn't need (or can't take) this shape-swap step at
+    all - e.g. one whose mouth mechanism is driven by scale/matte instead
+    (see find_beak_mechanism/embed_lip_sync_scale in build_short.py)."""
     if mouth_container_id is None:
         target_layers = data["layers"]
     else:
@@ -175,10 +176,18 @@ def adapt(data, mouth_layer_name, mouth_pos, mouth_scale, canvas_bg_color=(0.95,
     new_groups = [make_mouth_group(name, mouth_pos, mouth_scale, spec) for name, spec in MOUTH_SHAPES.items()]
     head_layer["shapes"][0:0] = new_groups  # frontmost, same convention as our own templates
 
-    # Re-parent every currently-unparented layer under one new null layer,
-    # so a single scale/anchor/position edit (done later, at compose time,
-    # once the target canvas is known) correctly resizes/repositions
-    # everything regardless of the source rig's own internal parenting.
+
+def add_canvas_wrapper(data, canvas_bg_color=(0.95, 0.96, 0.98, 1)):
+    """Mutates data in place: wraps every currently-unparented top-level
+    layer under one new null layer whose scale/anchor normalize this
+    character's own native stage size to our 512-equivalent content size
+    (so a single scale/anchor/position edit, done later at compose time
+    once the target canvas is known, correctly resizes/repositions
+    everything regardless of the source rig's own internal parenting),
+    plus a background rect behind everything - the part of adapt() that's
+    needed regardless of which mouth mechanism (if any) this character
+    uses, since it's about canvas size, not mouths."""
+    native_w, native_h = data["w"], data["h"]
     max_ind = max(l["ind"] for l in data["layers"])
     wrapper_ind = max_ind + 1
     content_scale = NATIVE_STAGE / max(native_w, native_h)
@@ -221,22 +230,68 @@ def adapt(data, mouth_layer_name, mouth_pos, mouth_scale, canvas_bg_color=(0.95,
     return data
 
 
+def adapt(data, mouth_layer_name, mouth_pos, mouth_scale, canvas_bg_color=(0.95, 0.96, 0.98, 1), mouth_container_id=None):
+    data = copy.deepcopy(data)
+    insert_mouth_shapes(data, mouth_layer_name, mouth_pos, mouth_scale, mouth_container_id=mouth_container_id)
+    return add_canvas_wrapper(data, canvas_bg_color)
+
+
+BEAK_LIKE = re.compile(r"beak|jaw|mouth|bill|lip", re.IGNORECASE)
+
+
+def find_beak_mechanism(data):
+    """A second known rig convention, found on a real upload (a bird whose
+    beak opens by *scaling* a matte-paired layer pair rather than swapping
+    between discrete mouth shapes): look for layers, in any one container,
+    whose name suggests a mouth/beak/jaw and whose own scale is animated -
+    that's the rig's own designed open/closed range, read directly rather
+    than invented, same principle as find_mouth_layer's use of tr.p. All
+    matching layers in the same container are returned together since a
+    mechanism like this is typically built from more than one paired part
+    (e.g. a matte layer plus the shape it reveals) that must move in sync.
+    Returns (container_id, [layer names], (min_y, max_y), fixed_x) or None."""
+    for container_id, layers in iter_layer_containers(data):
+        matches = []
+        for layer in layers:
+            if not BEAK_LIKE.search(layer.get("nm", "")):
+                continue
+            scale = layer.get("ks", {}).get("s")
+            if isinstance(scale, dict) and scale.get("a") == 1 and len(scale.get("k", [])) >= 2:
+                matches.append(layer)
+        if matches:
+            xs = {kf["s"][0] for l in matches for kf in l["ks"]["s"]["k"] if "s" in kf}
+            ys = [kf["s"][1] for l in matches for kf in l["ks"]["s"]["k"] if "s" in kf]
+            if len(xs) == 1 and ys:
+                return container_id, [l["nm"] for l in matches], (min(ys), max(ys)), xs.pop()
+    return None
+
+
 def auto_adapt(data, canvas_bg_color=(0.95, 0.96, 0.98, 1)):
-    """adapt() with mouth-layer/position/scale derived automatically from
-    the character's own existing mouth shape instead of requiring them as
-    manual CLI arguments - what the live editor's Speak panel uses for an
-    arbitrary uploaded character. Tries known rig conventions (currently:
-    a single swappable mouth shape, searched through nested precomps too)
-    and raises ValueError with a specific reason - distinguishing "no
-    vector shapes at all", "found a mouth-like part but it's a different,
-    not-yet-supported rig convention", and "nothing recognizable at all" -
-    rather than silently guessing a placement with no basis in the
-    artwork, or lumping every failure into one generic message."""
+    """Tries known rig conventions in order and returns (adapted_data,
+    lip_sync_mechanism) - what the live editor's Speak panel uses for an
+    arbitrary uploaded character, so build_short.py knows how to drive
+    speech on whichever mechanism was actually found, with no manual
+    per-character setup. Currently tries: a single swappable mouth shape
+    (searched through nested precomps too), then a scale/matte-driven
+    mechanism (also searched through nested precomps). Raises ValueError
+    with a specific reason - distinguishing "no vector shapes at all",
+    "found a mouth-like part but it's a different, not-yet-supported rig
+    convention", and "nothing recognizable at all" - rather than silently
+    guessing a placement with no basis in the artwork, or lumping every
+    failure into one generic message, when neither convention matches."""
     found = find_mouth_layer(data)
-    if found is None:
-        raise ValueError(describe_unadaptable_reason(data))
-    mouth_container_id, mouth_layer_name, mouth_pos, mouth_scale = found
-    return adapt(data, mouth_layer_name, mouth_pos, mouth_scale, canvas_bg_color, mouth_container_id=mouth_container_id)
+    if found is not None:
+        mouth_container_id, mouth_layer_name, mouth_pos, mouth_scale = found
+        adapted = adapt(data, mouth_layer_name, mouth_pos, mouth_scale, canvas_bg_color, mouth_container_id=mouth_container_id)
+        return adapted, {"type": "shape"}
+
+    beak = find_beak_mechanism(data)
+    if beak is not None:
+        container_id, layer_names, scale_range, fixed_x = beak
+        adapted = add_canvas_wrapper(copy.deepcopy(data), canvas_bg_color)
+        return adapted, {"type": "scale", "containerId": container_id, "layers": layer_names, "range": list(scale_range), "x": fixed_x}
+
+    raise ValueError(describe_unadaptable_reason(data))
 
 
 if __name__ == "__main__":

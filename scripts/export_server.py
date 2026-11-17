@@ -89,7 +89,7 @@ class Handler(http.server.SimpleHTTPRequestHandler):
 
             scene = {"label": "speak", "narration": text}
             if template_key == "custom":
-                scene["templateData"] = self._adapt_custom_lottie(body.get("customLottie"))
+                scene["templateData"], scene["lipSyncMechanism"] = self._adapt_custom_lottie(body.get("customLottie"))
             else:
                 if template_key not in SPEAK_TEMPLATES:
                     raise ValueError(f"unknown template '{template_key}' - must be one of {list(SPEAK_TEMPLATES)}")

@@ -153,6 +153,61 @@ def embed_lip_sync(scene_data, audio_bytes):
         tr["o"] = {"a": 1, "k": mouth_opacity_keyframes(active_states, name), "sid": name}
 
 
+def find_layer_in_container(scene_data, container_id, layer_name):
+    layers = scene_data["layers"] if container_id is None else next(
+        a["layers"] for a in scene_data.get("assets", []) if a["id"] == container_id
+    )
+    return next(l for l in layers if l["nm"] == layer_name)
+
+
+def viseme_scale_keyframes(active_states, min_v, max_v, fixed_x):
+    """Like mouth_opacity_keyframes, but for a rig whose mouth mechanism is
+    one continuous scale value rather than discrete swappable shapes (see
+    find_beak_mechanism in adapt_character_lottie.py) - maps each viseme
+    state to a position within the rig's own authored scale range (read
+    from its existing keyframes, not invented) instead of toggling opacity.
+    Openness order mouth-closed < mouth-mid < mouth-round < mouth-wide is a
+    judgment call (this mechanism can only vary by how open, not by shape,
+    unlike the 4 discrete shapes), picked to roughly match how wide each
+    sounds in speech."""
+    span = max_v - min_v
+    value_at_state = {
+        "mouth-closed": min_v,
+        "mouth-mid": min_v + 0.35 * span,
+        "mouth-round": min_v + 0.6 * span,
+        "mouth-wide": max_v,
+    }
+    keyframes = []
+    prev = None
+    for t, state in enumerate(active_states):
+        v = value_at_state[state]
+        if v != prev:
+            keyframes.append({"t": t, "s": [fixed_x, v, 100], "h": 1})
+            prev = v
+    if not keyframes:
+        keyframes = [{"t": 0, "s": [fixed_x, min_v, 100], "h": 1}]
+    keyframes.append({"t": len(active_states), "s": list(keyframes[-1]["s"])})
+    return keyframes
+
+
+def embed_lip_sync_scale(scene_data, audio_bytes, container_id, layer_names, scale_range, fixed_x):
+    """embed_lip_sync's counterpart for the scale/matte-driven mouth
+    mechanism: classify the narration the same way, then key every layer
+    in layer_names (typically a matte pair that must move together) to the
+    same scale keyframes, rather than toggling 4 shapes' opacity."""
+    fps = scene_data["fr"]
+    frame_count = scene_data["op"] - scene_data["ip"]
+    features = extract_features(audio_bytes, fps, frame_count)
+    active_states = [classify_viseme(f["rms"], f["zcr"]) for f in features]
+    min_v, max_v = scale_range
+    keyframes = viseme_scale_keyframes(active_states, min_v, max_v, fixed_x)
+    for name in layer_names:
+        layer = find_layer_in_container(scene_data, container_id, name)
+        # Same "sid" convention as the shape-swap mouths and eyesScale -
+        # lets a host override this baked animation at runtime too.
+        layer["ks"]["s"] = {"a": 1, "k": copy.deepcopy(keyframes), "sid": "beakScale"}
+
+
 EYE_GROUPS = [
     f"eye-{side}-{part}"
     for side in ("left", "right")
@@ -347,13 +402,18 @@ LOOP_DETECTION_TOLERANCE = 2  # frames - AE exports often end a cycle's last key
 
 def is_full_cycle_animation(prop, period):
     """True if an animated ks property's keyframes span essentially the
-    whole original template duration (starts near 0, ends near `period`) -
-    i.e. it's a repeating motion (a walk cycle, an arm swing, a head-bob),
-    not some other animated property with a different, shorter timespan."""
+    whole original template duration (starts near 0, ends near `period`,
+    not well past it) - i.e. it's a repeating motion (a walk cycle, an arm
+    swing, a head-bob), not some other animated property with a different
+    timespan. Deliberately an *equality* check (within tolerance), not just
+    "at least period" - a property something upstream (e.g.
+    embed_lip_sync_scale) already keyed across the full extended duration
+    also starts near 0 and ends well past period, but re-tiling it here as
+    if it were still a short repeating pattern would corrupt it."""
     if not isinstance(prop, dict) or prop.get("a") != 1 or len(prop.get("k", [])) < 2:
         return False
     first_t, last_t = prop["k"][0].get("t", 0), prop["k"][-1].get("t", 0)
-    return first_t <= LOOP_DETECTION_TOLERANCE and last_t >= period - LOOP_DETECTION_TOLERANCE
+    return first_t <= LOOP_DETECTION_TOLERANCE and abs(last_t - period) <= LOOP_DETECTION_TOLERANCE
 
 
 def loop_body_motion(scene_data, period, total_frames):
@@ -499,7 +559,11 @@ def compose(plan, aspect_ratio=None, voice_engine=None, voice=None):
             if audio_frames > template_duration:
                 extend_scene_duration(scene_data, audio_frames)
             embed_audio(scene_data, audio_bytes, audio_id=f"{scene_id}-narration")
-            embed_lip_sync(scene_data, audio_bytes)
+            mechanism = scene.get("lipSyncMechanism", {"type": "shape"})
+            if mechanism["type"] == "scale":
+                embed_lip_sync_scale(scene_data, audio_bytes, mechanism["containerId"], mechanism["layers"], mechanism["range"], mechanism["x"])
+            else:
+                embed_lip_sync(scene_data, audio_bytes)
         if scene.get("prop"):
             embed_prop(scene_data, scene["prop"])
         loop_body_motion(scene_data, template_duration, scene_data["op"] - scene_data["ip"])
