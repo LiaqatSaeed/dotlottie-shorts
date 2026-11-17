@@ -143,14 +143,12 @@ def describe_unadaptable_reason(data):
 
     for _, layers in iter_layer_containers(data):
         for layer in layers:
-            if not BEAK_LIKE.search(layer.get("nm", "")):
-                continue
-            scale = layer.get("ks", {}).get("s")
-            if isinstance(scale, dict) and scale.get("a") == 1 and len(scale.get("k", [])) >= 2:
-                return (f"found a layer named '{layer['nm']}' that looks mouth-related with its own "
-                        "scale animation, but find_beak_mechanism couldn't derive a consistent "
-                        "open/close range from it (e.g. its keyframes don't share one x-scale "
-                        "value) - this character's mechanism needs a closer look, not a guess")
+            if BEAK_LIKE.search(layer.get("nm", "")) and (layer.get("ks", {}).get("s", {}).get("a") == 1 or
+                    (layer.get("ks", {}).get("p", {}).get("s") and layer["ks"]["p"].get("y", {}).get("a") == 1)):
+                return (f"found a layer named '{layer['nm']}' that looks mouth-related and has its "
+                        "position or scale animated, but not in the simple rest-open-rest idle "
+                        "pattern find_beak_mechanism looks for (its first and last keyframe don't "
+                        "share one value) - this character's mechanism needs a closer look, not a guess")
     return ("couldn't automatically find an existing mouth shape on this character "
             "(looked for a stroke-painted shape among otherwise fill-painted shapes "
             "on each layer, including inside nested precomps) - adapt it manually "
@@ -239,30 +237,87 @@ def adapt(data, mouth_layer_name, mouth_pos, mouth_scale, canvas_bg_color=(0.95,
 BEAK_LIKE = re.compile(r"beak|jaw|mouth|bill|lip", re.IGNORECASE)
 
 
+def _rest_and_active_value(keyframes):
+    """A beak/jaw idle "chatter" loop is typically rest -> open -> rest,
+    i.e. its first and last keyframe share one value and something in
+    between differs - so *which* value is "closed" vs "open" can be read
+    straight off that shape (whichever value recurs at both ends is rest),
+    rather than assumed to be the numeric min or max: on this rig the
+    "open" tongue position is numerically *smaller* than its rest position
+    (it retreats, not advances), so min/max would have silently picked the
+    wrong direction. Returns (closed_value, open_value) or None if the
+    keyframes don't form that simple two-state shape."""
+    if len(keyframes) < 2:
+        return None
+    first, last = keyframes[0]["s"][0], keyframes[-1]["s"][0]
+    if first != last:
+        return None
+    for kf in keyframes[1:-1]:
+        if kf["s"][0] != first:
+            return first, kf["s"][0]
+    return None
+
+
+def _scale_y_candidate(layer):
+    """One beak-mechanism axis: the layer's own y-scale (e.g. a matte
+    reveal). Returns {"axis": "scaleY", "fixedX": ..., "closed": ...,
+    "open": ...} or None."""
+    s = layer.get("ks", {}).get("s")
+    if not (isinstance(s, dict) and s.get("a") == 1 and len(s.get("k", [])) >= 2):
+        return None
+    result = _rest_and_active_value([{"s": [kf["s"][1]]} for kf in s["k"] if "s" in kf])
+    if result is None:
+        return None
+    closed, open_ = result
+    return {"axis": "scaleY", "fixedX": s["k"][0]["s"][0], "closed": closed, "open": open_}
+
+
+def _position_y_candidate(layer):
+    """The other, more common beak-mechanism axis: a split position's own
+    y-component animated (e.g. a lower jaw physically moving down/away) -
+    the actual mechanism on the one real bird upload tested so far; the
+    scale-based one above was this file's first (wrong) guess at it, kept
+    as a second pattern in case some other rig genuinely uses it. Returns
+    {"axis": "positionY", "fixedX": None, "closed": ..., "open": ...} or
+    None."""
+    p = layer.get("ks", {}).get("p")
+    if not (isinstance(p, dict) and p.get("s") and isinstance(p.get("y"), dict)):
+        return None
+    y = p["y"]
+    if not (y.get("a") == 1 and len(y.get("k", [])) >= 2):
+        return None
+    result = _rest_and_active_value(y["k"])
+    if result is None:
+        return None
+    closed, open_ = result
+    return {"axis": "positionY", "fixedX": None, "closed": closed, "open": open_}
+
+
 def find_beak_mechanism(data):
     """A second known rig convention, found on a real upload (a bird whose
-    beak opens by *scaling* a matte-paired layer pair rather than swapping
-    between discrete mouth shapes): look for layers, in any one container,
-    whose name suggests a mouth/beak/jaw and whose own scale is animated -
-    that's the rig's own designed open/closed range, read directly rather
-    than invented, same principle as find_mouth_layer's use of tr.p. All
-    matching layers in the same container are returned together since a
-    mechanism like this is typically built from more than one paired part
-    (e.g. a matte layer plus the shape it reveals) that must move in sync.
-    Returns (container_id, [layer names], (min_y, max_y), fixed_x) or None."""
+    beak/jaw physically moves, rather than swapping between discrete mouth
+    shapes): look for layers, in any one container, whose name suggests a
+    mouth/beak/jaw and whose position or scale animates in a simple
+    rest-open-rest idle pattern - read that pattern's own authored
+    open/closed values directly (via _rest_and_active_value), same
+    principle as find_mouth_layer's use of tr.p, rather than invent a
+    range or assume which numeric direction means "open". All matching
+    layers in the same container are returned together since real rigs
+    are usually built from more than one part that must move together
+    (e.g. a jaw plus a tongue riding along it).
+    Returns (container_id, [target dicts, each with layer/axis/fixedX/
+    closed/open]) or None."""
     for container_id, layers in iter_layer_containers(data):
-        matches = []
+        targets = []
         for layer in layers:
             if not BEAK_LIKE.search(layer.get("nm", "")):
                 continue
-            scale = layer.get("ks", {}).get("s")
-            if isinstance(scale, dict) and scale.get("a") == 1 and len(scale.get("k", [])) >= 2:
-                matches.append(layer)
-        if matches:
-            xs = {kf["s"][0] for l in matches for kf in l["ks"]["s"]["k"] if "s" in kf}
-            ys = [kf["s"][1] for l in matches for kf in l["ks"]["s"]["k"] if "s" in kf]
-            if len(xs) == 1 and ys:
-                return container_id, [l["nm"] for l in matches], (min(ys), max(ys)), xs.pop()
+            candidate = _position_y_candidate(layer) or _scale_y_candidate(layer)
+            if candidate:
+                candidate["layer"] = layer["nm"]
+                targets.append(candidate)
+        if targets:
+            return container_id, targets
     return None
 
 
@@ -287,9 +342,9 @@ def auto_adapt(data, canvas_bg_color=(0.95, 0.96, 0.98, 1)):
 
     beak = find_beak_mechanism(data)
     if beak is not None:
-        container_id, layer_names, scale_range, fixed_x = beak
+        container_id, targets = beak
         adapted = add_canvas_wrapper(copy.deepcopy(data), canvas_bg_color)
-        return adapted, {"type": "scale", "containerId": container_id, "layers": layer_names, "range": list(scale_range), "x": fixed_x}
+        return adapted, {"type": "axis", "containerId": container_id, "targets": targets}
 
     raise ValueError(describe_unadaptable_reason(data))
 

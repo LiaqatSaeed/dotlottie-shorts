@@ -160,52 +160,56 @@ def find_layer_in_container(scene_data, container_id, layer_name):
     return next(l for l in layers if l["nm"] == layer_name)
 
 
-def viseme_scale_keyframes(active_states, min_v, max_v, fixed_x):
-    """Like mouth_opacity_keyframes, but for a rig whose mouth mechanism is
-    one continuous scale value rather than discrete swappable shapes (see
-    find_beak_mechanism in adapt_character_lottie.py) - maps each viseme
-    state to a position within the rig's own authored scale range (read
-    from its existing keyframes, not invented) instead of toggling opacity.
-    Openness order mouth-closed < mouth-mid < mouth-round < mouth-wide is a
-    judgment call (this mechanism can only vary by how open, not by shape,
-    unlike the 4 discrete shapes), picked to roughly match how wide each
-    sounds in speech."""
-    span = max_v - min_v
-    value_at_state = {
-        "mouth-closed": min_v,
-        "mouth-mid": min_v + 0.35 * span,
-        "mouth-round": min_v + 0.6 * span,
-        "mouth-wide": max_v,
-    }
+# How open each viseme state should drive an axis-mechanism mouth, as a
+# 0..1 fraction between a target's own authored closed/open values - a
+# judgment call (this mechanism can only vary by how open, not by shape,
+# unlike the 4 discrete mouth shapes), picked to roughly match how wide
+# each sounds in speech.
+VISEME_OPENNESS = {"mouth-closed": 0.0, "mouth-mid": 0.35, "mouth-round": 0.6, "mouth-wide": 1.0}
+
+
+def openness_keyframes(active_states, closed, open_):
+    """Like mouth_opacity_keyframes, but for a continuous value interpolated
+    between a target's own authored closed/open values (see
+    find_beak_mechanism in adapt_character_lottie.py) instead of toggling
+    opacity between discrete shapes."""
     keyframes = []
     prev = None
     for t, state in enumerate(active_states):
-        v = value_at_state[state]
+        v = closed + VISEME_OPENNESS[state] * (open_ - closed)
         if v != prev:
-            keyframes.append({"t": t, "s": [fixed_x, v, 100], "h": 1})
+            keyframes.append({"t": t, "s": [v], "h": 1})
             prev = v
     if not keyframes:
-        keyframes = [{"t": 0, "s": [fixed_x, min_v, 100], "h": 1}]
+        keyframes = [{"t": 0, "s": [closed], "h": 1}]
     keyframes.append({"t": len(active_states), "s": list(keyframes[-1]["s"])})
     return keyframes
 
 
-def embed_lip_sync_scale(scene_data, audio_bytes, container_id, layer_names, scale_range, fixed_x):
-    """embed_lip_sync's counterpart for the scale/matte-driven mouth
-    mechanism: classify the narration the same way, then key every layer
-    in layer_names (typically a matte pair that must move together) to the
-    same scale keyframes, rather than toggling 4 shapes' opacity."""
+def embed_lip_sync_axis(scene_data, audio_bytes, container_id, targets):
+    """embed_lip_sync's counterpart for a position/scale-driven mouth
+    mechanism (see find_beak_mechanism): classify the narration the same
+    way, then key every target's own axis (a layer's y-scale, or a split
+    position's y-component) between its own authored closed/open values -
+    each target can have a different axis and a different (even
+    oppositely-signed) range, since real rigs are often built from more
+    than one part (e.g. a jaw plus a tongue riding along it) that don't
+    necessarily move the same way."""
     fps = scene_data["fr"]
     frame_count = scene_data["op"] - scene_data["ip"]
     features = extract_features(audio_bytes, fps, frame_count)
     active_states = [classify_viseme(f["rms"], f["zcr"]) for f in features]
-    min_v, max_v = scale_range
-    keyframes = viseme_scale_keyframes(active_states, min_v, max_v, fixed_x)
-    for name in layer_names:
-        layer = find_layer_in_container(scene_data, container_id, name)
+
+    for target in targets:
+        layer = find_layer_in_container(scene_data, container_id, target["layer"])
+        keyframes = openness_keyframes(active_states, target["closed"], target["open"])
         # Same "sid" convention as the shape-swap mouths and eyesScale -
         # lets a host override this baked animation at runtime too.
-        layer["ks"]["s"] = {"a": 1, "k": copy.deepcopy(keyframes), "sid": "beakScale"}
+        if target["axis"] == "scaleY":
+            full_kf = [{**kf, "s": [target["fixedX"], kf["s"][0], 100]} for kf in keyframes]
+            layer["ks"]["s"] = {"a": 1, "k": full_kf, "sid": "beakScale"}
+        elif target["axis"] == "positionY":
+            layer["ks"]["p"]["y"] = {"a": 1, "k": keyframes, "sid": "beakPositionY"}
 
 
 EYE_GROUPS = [
@@ -560,8 +564,8 @@ def compose(plan, aspect_ratio=None, voice_engine=None, voice=None):
                 extend_scene_duration(scene_data, audio_frames)
             embed_audio(scene_data, audio_bytes, audio_id=f"{scene_id}-narration")
             mechanism = scene.get("lipSyncMechanism", {"type": "shape"})
-            if mechanism["type"] == "scale":
-                embed_lip_sync_scale(scene_data, audio_bytes, mechanism["containerId"], mechanism["layers"], mechanism["range"], mechanism["x"])
+            if mechanism["type"] == "axis":
+                embed_lip_sync_axis(scene_data, audio_bytes, mechanism["containerId"], mechanism["targets"])
             else:
                 embed_lip_sync(scene_data, audio_bytes)
         if scene.get("prop"):
